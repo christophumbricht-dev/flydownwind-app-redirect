@@ -1,0 +1,1025 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VFR Platzrunden 3D</title>
+<style>
+@font-face{font-family:"Barlow Condensed";font-weight:600;src:url(fonts/barlow-condensed-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"Barlow Condensed";font-weight:500;src:url(fonts/barlow-condensed-latin-500-normal.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Sans";font-weight:400;src:url(fonts/ibm-plex-sans-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Sans";font-weight:500 600;src:url(fonts/ibm-plex-sans-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"IBM Plex Mono";font-weight:400 500;src:url(fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2")}
+
+/* Layout: 3D terrain table takes the screen; airport picker floats top-left on the map; controls, flight data and fold-out profile in a side column (desktop) or below (phone) */
+:root{
+  --bg:#eef0f2;--panel:#ffffff;--fg:#1b2026;--muted:#5d6670;--line:#d3d8dd;
+  --accent:#0E5FA8;--accent-soft:#EAF4FC;--route:#1673BD;--sky:#dfe6ec;--terrain:#8c7b5a;--terrain-soft:#d9cfbd;--grid:#e3e7ea;
+  --f-display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif;
+  --f-data:"IBM Plex Mono",ui-monospace,monospace;
+}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;margin:0}
+.app{display:flex;flex-direction:column;min-height:100%}
+aside{display:contents}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding-block:10px;padding-inline:16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.id{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;min-width:0;flex:1 1 100%}
+.id h1{font-family:var(--f-display);font-weight:600;font-size:22px;letter-spacing:.02em;margin:0;text-wrap:balance}
+.id span{font-family:var(--f-data);font-size:12px;color:var(--muted)}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{font:500 13px var(--f-body);background:transparent;color:var(--fg);border:0;padding:7px 11px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg.grid{display:grid;grid-template-columns:1fr 1fr}
+.seg.grid button{border-left:0;border-top:1px solid var(--line);text-align:left}
+.seg.grid button:nth-child(-n+2){border-top:0}
+.seg.grid button:nth-child(2n){border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ctl{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.ctl input{width:100px;accent-color:var(--accent)}
+.ctl output{font-family:var(--f-data);color:var(--fg);min-width:2ch}
+.btns{display:flex;gap:8px}
+.btn{font:500 13px var(--f-body);background:transparent;color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer}
+.btn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+main{position:relative;height:68vh;height:68dvh;min-height:340px;background:var(--sky)}
+#gl{position:absolute;inset:0}
+.picker{position:absolute;left:12px;top:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:4px;width:210px;max-height:calc(100% - 70px)}
+.picker .ph{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:2px 6px 0}
+.picker input{font:400 13px var(--f-body);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:6px 8px;min-width:0}
+.plist{display:flex;flex-direction:column;gap:1px;overflow-y:auto;min-height:0;flex:1 1 auto}
+.picker select{display:none;font:500 14px var(--f-body);color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.picker h2{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:2px 6px 4px}
+.picker button{display:grid;grid-template-columns:3.4em 1fr;align-items:baseline;gap:0 6px;text-align:left;background:transparent;border:0;border-radius:5px;padding:4px 6px;cursor:pointer;color:var(--fg);font:500 13px var(--f-body)}
+.picker button b{font:500 12px var(--f-data);color:var(--muted)}
+.picker button small{display:none}
+.picker button:hover{background:var(--bg)}
+.picker button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.picker button[aria-pressed="true"] b{color:var(--accent)}
+.fd{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px 16px;padding-block:10px;padding-inline:16px;background:var(--panel);border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.fd .leg{grid-column:1/-1;font-family:var(--f-display);font-weight:600;font-size:18px;letter-spacing:.03em;text-transform:uppercase;color:var(--accent)}
+.fd span em{display:block;font-style:normal;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.fd span b{font-family:var(--f-data);font-weight:500;font-size:14px}
+.prof{background:var(--panel);padding-block:4px 12px;padding-inline:16px}
+.prof summary{list-style:none;cursor:pointer;padding-block:8px;display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:baseline}
+.prof summary::-webkit-details-marker{display:none}
+.prof summary h2{font-family:var(--f-display);font-weight:600;font-size:16px;letter-spacing:.04em;text-transform:uppercase;margin:0}
+.prof summary .chev{font-size:13px;color:var(--accent);transition:transform .2s}
+.prof[open] summary .chev{transform:rotate(180deg)}
+.prof summary p{grid-column:1/-1;margin:0;font-size:12px;color:var(--muted)}
+.prof summary p b{color:var(--fg);font-weight:500;font-family:var(--f-data)}
+.pwrap{position:relative;height:150px;margin-top:4px}
+.pwrap canvas{position:absolute;inset:0;width:100%;height:100%}
+.key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11px;color:var(--muted);margin-top:6px}
+.key i{display:inline-block;width:12px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.legend{display:flex;flex-direction:column;gap:4px;font-size:12px!important;color:var(--fg)!important;padding-bottom:0!important}
+.legend i{display:inline-block;width:14px;height:5px;border-radius:3px;margin-right:6px;vertical-align:middle}
+.legend b{font-weight:500}
+.src{font-size:11px;color:var(--muted);padding-block:10px;padding-inline:16px;line-height:1.5;margin:0}
+.chip{position:absolute;left:12px;bottom:12px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 9px;font:500 12px var(--f-body);max-width:calc(100% - 24px)}
+.chip.warn{border-color:#c98a00}
+.chip2{bottom:auto;top:12px;left:auto;right:12px;max-width:calc(100% - 260px)}
+@media (max-width:640px){.chip2{top:56px;left:12px;right:12px;max-width:none}}
+#err{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding-inline:16px;text-align:center;color:var(--muted)}
+
+.menu{position:relative;margin-left:auto}
+.mbtn{display:inline-flex;align-items:center;gap:8px;padding:6px 10px}
+.bars{display:inline-block;width:14px;height:2px;background:currentColor;box-shadow:0 -5px 0 currentColor,0 5px 0 currentColor}
+.mlist{position:absolute;right:0;top:calc(100% + 6px);z-index:20;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px;min-width:190px;box-shadow:0 8px 24px rgba(0,0,0,.14);display:flex;flex-direction:column}
+.mlist button{text-align:left;background:transparent;border:0;border-radius:5px;padding:9px 12px;font:500 14px var(--f-body);color:var(--fg);cursor:pointer}
+.mlist button:hover,.mlist button:focus-visible{background:var(--accent-soft);color:var(--accent)}
+.langs{display:inline-flex;gap:4px;flex:1 1 100%}
+.langs button{font:500 11px var(--f-data);letter-spacing:.04em;background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:3px 7px;cursor:pointer}
+.langs button[aria-pressed="true"]{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.apinfo{padding-block:10px;padding-inline:16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.apinfo h2{font:600 11px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+.flist{list-style:none;margin:0 0 8px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:3px 12px;font-variant-numeric:tabular-nums}
+.flist li{display:flex;justify-content:space-between;gap:8px;font-size:12px;border-bottom:1px dotted var(--line);padding-block:2px}
+.flist li span{color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flist li b{font:500 12px var(--f-data)}
+.weblink{font:500 13px var(--f-body);color:var(--accent);text-decoration:none}
+.weblink:hover{text-decoration:underline}
+.page{min-height:100%;background:var(--bg);padding-block:24px 48px;padding-inline:16px;box-sizing:border-box}
+.page .pin{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.page h1{font-family:var(--f-display);font-weight:600;font-size:30px;letter-spacing:.02em;margin:0;text-wrap:balance}
+.page .back{align-self:flex-start}
+.field{display:flex;flex-direction:column;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.field .seg{align-self:flex-start}
+.flab{font:600 12px var(--f-body);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.swatches{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.swatches button{width:34px;height:34px;border-radius:50%;border:2px solid var(--panel);box-shadow:0 0 0 1px var(--line);cursor:pointer}
+.swatches button[aria-checked="true"]{box-shadow:0 0 0 2px var(--fg)}
+.swatches input[type=color]{width:42px;height:34px;border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:2px;cursor:pointer}
+.rowc{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.rowc input[type=range]{flex:1 1 200px;accent-color:var(--accent)}
+.rowc output{font:500 13px var(--f-data);min-width:4.5ch}
+.wprev{height:28px;display:flex;align-items:center}
+.wprev i{display:block;width:100%;border-radius:99px;background:var(--route);box-shadow:0 0 0 3px #fff}
+.check{display:flex;gap:10px;align-items:center;font-size:15px;cursor:pointer}
+.check input{width:18px;height:18px;accent-color:var(--accent)}
+.muted{color:var(--muted);font-size:13px}
+.prose{line-height:1.6;font-size:15px}
+.prose h2{font-family:var(--f-display);font-weight:600;font-size:22px;margin:12px 0 0}
+.prose h3{font-size:16px;margin:4px 0 -8px}
+.prose p,.prose ul{margin:0;max-width:68ch}
+.prose a{color:var(--accent)}
+.ph-fill{background:var(--accent-soft);color:var(--accent);border-radius:3px;padding:0 4px}
+
+/* Disclaimer: always-visible bar, stamp on the 3D view (also in screenshots), first-visit dialog, per-airfield verification status */
+.discbar{display:flex;gap:10px;align-items:flex-start;background:#fff4d6;color:#4a3800;border-block:2px solid #e3b440;padding-block:10px;padding-inline:16px;font-size:13px;line-height:1.45}
+.discbar b{display:block;font-family:var(--f-display);font-weight:600;font-size:17px;letter-spacing:.04em;text-transform:uppercase}
+.discbar .ico{font-size:22px;line-height:1}
+.discbar>div{flex:1;min-width:0}
+.disc-x{flex:none;width:32px;height:32px;margin:-4px -6px 0 0;border:0;border-radius:50%;background:rgba(74,56,0,.1);color:#4a3800;font-size:22px;line-height:1;cursor:pointer}
+.discbar.closed{display:none}
+.stamp{position:absolute;right:12px;bottom:12px;max-width:40%;background:rgba(255,244,214,.94);color:#4a3800;border:1.5px solid #e3b440;border-radius:6px;padding:5px 9px;font:600 12px var(--f-body);letter-spacing:.03em;text-transform:uppercase;pointer-events:none}
+.chip{max-width:calc(60% - 30px)}
+@media (max-width:640px){.stamp{left:12px;right:12px;max-width:none;text-align:center}.chip:not(.chip2){bottom:46px;max-width:calc(100% - 24px)}}
+.verif{display:inline-block;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;margin-block:2px 8px;padding:3px 8px;border-radius:999px;font:600 12px var(--f-body);background:#fff4d6;color:#4a3800;border:1px solid #e3b440}
+@media (max-width:420px){.verif{font-size:11px;padding:3px 7px;letter-spacing:-.01em}}
+.verif.ok{background:#e3f4e8;color:#1d5b31;border-color:#7cc092}
+.dmodal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(10,14,18,.55)}
+.dmodal .box{max-width:460px;background:var(--panel);color:var(--fg);border:2px solid #e3b440;border-radius:12px;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+.dmodal h2{font-family:var(--f-display);font-weight:600;font-size:24px;letter-spacing:.03em;text-transform:uppercase;margin:0 0 8px;color:#8a5a00}
+.dmodal p{margin:0 0 16px;line-height:1.5}
+.dmodal button{font:600 15px var(--f-body);background:var(--accent);color:#fff;border:0;border-radius:8px;padding:10px 18px;cursor:pointer;width:100%}
+.warnbox{background:#fff4d6;color:#4a3800;border:1px solid #e3b440;border-radius:8px;padding:12px 14px}
+body.subpage{overflow:auto}
+body.subpage .app{display:none!important}
+@media (max-width:640px){
+  .picker{width:auto;right:auto;padding:4px;max-height:none}
+  .picker .ph,.picker input,.plist{display:none}
+  .picker select{display:block;max-width:calc(100vw - 48px)}
+  .seg.grid{grid-template-columns:1fr}
+  .seg.grid button:nth-child(2n){border-left:0}
+  .seg.grid button:nth-child(2){border-top:1px solid var(--line)}
+}
+@media (min-width:900px){
+  html,body{overflow:hidden}
+  .app{display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,30vw,420px);grid-template-rows:auto auto minmax(0,1fr);grid-template-areas:"disc head" "map head" "map side";height:100%}
+  .discbar{grid-area:disc}
+  main{grid-area:map;height:auto;min-height:0}
+  aside{display:block;background:var(--panel);border-left:1px solid var(--line)}
+  aside:first-child{grid-area:head}
+  #side2{grid-area:side;overflow-y:auto}
+  .pwrap{height:190px}
+}
+@media (prefers-reduced-motion:reduce){.prof summary .chev{transition:none}}
+/* embedded in the Downwind app (?embed=1): airfield and language come from the app */
+html.embed .menu,html.embed .langs,html.embed #picker,html.embed #pgImpressum,html.embed #pgSettings{display:none!important}
+</style>
+</head>
+<body>
+<div class="app" id="pgMain">
+<aside>
+<header>
+  <div class="id"><h1 id="apName">Bern-Belp</h1><span id="apMeta">LSZB · 1675 ft</span>
+    <div class="menu">
+      <button class="btn mbtn" id="menuBtn" aria-haspopup="true" aria-expanded="false" aria-controls="menuList"><span class="bars" aria-hidden="true"></span><span data-i18n="menu">Menü</span></button>
+      <div class="mlist" id="menuList" role="menu" hidden>
+        <button role="menuitem" data-go="main" data-i18n="nav_circ">Platzrunden</button>
+        <button role="menuitem" data-go="settings" data-i18n="nav_set">Einstellungen</button>
+        <button role="menuitem" data-go="impressum" data-i18n="nav_imp">Impressum</button>
+      </div>
+    </div>
+  </div>
+  <div class="langs" role="group" aria-label="Sprache / Langue / Lingua / Lingua / Language">
+    <button data-lang="de" aria-pressed="true">DE</button><button data-lang="fr">FR</button><button data-lang="it">IT</button><button data-lang="rm">RM</button><button data-lang="en">EN</button>
+  </div>
+  <div class="seg" id="circs" role="group" aria-label="Platzrunde"></div>
+  <div class="seg" role="group" aria-label="Bodenkarte">
+    <button id="lyImg" aria-pressed="true" data-i18n="lyImg">Luftbild</button>
+    <button id="lyMap" aria-pressed="false" data-i18n="lyMap">Landeskarte</button>
+    <button id="lyRel" aria-pressed="false" data-i18n="lyRel">Relief</button>
+  </div>
+  <label class="ctl" for="ex"><span data-i18n="exag">Überhöhung</span> <input id="ex" type="range" min="1" max="5" step="1" value="2"><output id="exo">2×</output></label>
+  <label class="ctl" for="spd"><span data-i18n="speed">Tempo</span> <input id="spd" type="range" min="0.5" max="8" step="0.5" value="1"><output id="spdo">1×</output></label>
+  <div class="btns"><button class="btn" id="play" aria-pressed="false">Pause</button><button class="btn" id="chase" aria-pressed="false" data-i18n="chase">Mitfliegen</button><button class="btn" id="homeBtn" data-i18n="home">Ansicht zurücksetzen</button></div>
+</header>
+</aside>
+<div class="discbar" role="note"><span class="ico" aria-hidden="true">⚠</span><div><b data-i18n="disc_title">Nur zur Illustration</b><span data-i18n="disc_body"></span></div><button class="disc-x" id="discX" type="button" aria-label="Close">×</button></div>
+<main>
+  <div id="gl"></div>
+  <div class="stamp" data-i18n="disc_stamp" aria-hidden="true">Illustration · nicht für die Navigation</div>
+  <div id="err" hidden data-i18n="glErr">3D-Darstellung konnte nicht geladen werden.</div>
+  <nav class="picker" id="picker" aria-label="Flugplatz">
+    <label for="apSearch" class="ph" data-i18n="airport">Flugplatz</label>
+    <input id="apSearch" type="search" placeholder="Name oder ICAO" autocomplete="off">
+    <div class="plist" id="plist"></div>
+    <select id="apSelect" aria-label="Flugplatz"></select>
+  </nav>
+  <div id="tiles" class="chip" role="status"></div>
+  <div id="demchip" class="chip chip2" role="status" hidden></div>
+</main>
+<aside id="side2">
+<div class="fd" aria-live="polite">
+  <span class="leg" id="leg">Startlauf</span>
+  <span><em data-i18n="alt">Höhe</em><b id="amsl">–</b></span>
+  <span><em data-i18n="agl">über Gelände</em><b id="agl">–</b></span>
+  <span><em data-i18n="tdp">bis Aufsetzpunkt</em><b id="tdp">–</b></span>
+  <span><em data-i18n="circuit">Volte</em><b id="vol">–</b></span>
+  <span class="turnrow"><em data-i18n="base">Base-Kurve</em><b id="tbase">–</b></span>
+  <span class="turnrow"><em data-i18n="final">Final-Kurve</em><b id="tfin">–</b></span>
+</div>
+<section class="apinfo">
+  <span class="verif" id="verif"></span>
+  <h2 data-i18n="freqs">Frequenzen</h2>
+  <ul class="flist" id="flist"></ul>
+  <a id="apWeb" class="weblink" href="#" target="_blank" rel="noopener"><span data-i18n="website">Website des Flugplatzes</span> ↗</a>
+</section>
+<details class="prof" id="prof">
+  <summary>
+    <h2 data-i18n="profile">Höhenprofil entlang der Volte</h2><span class="chev" aria-hidden="true">▼</span>
+    <p><span data-i18n="hmax">Höchstes Gelände ±1 km</span>: <b id="hmax">–</b> · <span data-i18n="hclr">Min. Abstand in der Volte</span>: <b id="hclr">–</b></p>
+  </summary>
+  <div class="pwrap"><canvas id="pf"></canvas><canvas id="pc"></canvas></div>
+  <div class="key"><span><i style="background:var(--route)"></i><span data-i18n="k_path">Flugweg</span></span><span><i style="background:var(--terrain)"></i><span data-i18n="k_ground">Gelände unter dem Flugweg</span></span><span><i style="background:var(--terrain-soft)"></i><span data-i18n="k_side">höchstes Gelände ±1 km seitlich</span></span></div>
+</details>
+<p class="src legend" id="legendBox"><span><i style="background:var(--route)"></i><b id="priName"></b> · <span data-i18n="animated">animiert</span></span><span id="altLegend" hidden><i style="background:#F28C28"></i><b id="altName"></b> · <span data-i18n="compare">zum Vergleich</span></span></p>
+<p class="src" id="srcNote"></p>
+<p class="src"><span id="gsNote"></span> <span data-i18n="src"></span></p>
+</aside>
+<div class="dmodal" id="discModal" role="dialog" aria-modal="true" aria-labelledby="discH" hidden>
+  <div class="box"><h2 id="discH" data-i18n="disc_title">Nur zur Illustration</h2><p data-i18n="disc_body"></p><button id="discOk" data-i18n="disc_ok">Verstanden</button></div>
+</div>
+</div>
+
+<section class="page" id="pgSettings" hidden>
+  <div class="pin">
+    <button class="btn back" data-go="main">← <span data-i18n="set_back">Zurück zu den Platzrunden</span></button>
+    <h1 data-i18n="set_title">Einstellungen</h1>
+    <div class="field">
+      <span class="flab" data-i18n="set_color">Farbe der Platzrunde</span>
+      <div class="swatches" id="swatches" role="radiogroup"></div>
+    </div>
+    <div class="field">
+      <label class="flab" for="setWidth" data-i18n="set_width">Dicke der Platzrunde</label>
+      <div class="rowc"><input id="setWidth" type="range" min="0.4" max="2.5" step="0.1" value="1"><output id="setWidthO">100 %</output></div>
+      <div class="wprev" id="wprev"><i></i></div>
+    </div>
+    <div class="field">
+      <span class="flab" data-i18n="set_gs">Anflugwinkel</span>
+      <div class="seg" id="setGs" role="radiogroup"><button data-gs="3">3°</button><button data-gs="4">4°</button><button data-gs="5">5°</button></div>
+    </div>
+    <div class="field">
+      <span class="flab" data-i18n="set_pcolor">Farbe des Flugzeugs</span>
+      <div class="swatches" id="pswatches" role="radiogroup"></div>
+    </div>
+    <div class="field">
+      <span class="flab" data-i18n="set_ptype">Flugzeugtyp</span>
+      <div class="seg" id="setPtype" role="radiogroup"><button data-pt="low" data-i18n="pt_low">Tiefdecker</button><button data-pt="high" data-i18n="pt_high">Hochdecker</button></div>
+    </div>
+    <div class="field">
+      <label class="check"><input id="setTurns" type="checkbox" checked> <span data-i18n="set_turns">Höhen der Base- und Final-Kurve anzeigen</span></label>
+    </div>
+    <div class="rowc"><button class="btn" id="setReset" data-i18n="set_reset">Zurücksetzen</button><span class="muted" data-i18n="set_saved">Einstellungen werden in diesem Browser gespeichert.</span></div>
+  </div>
+</section>
+
+<section class="page" id="pgImpressum" hidden>
+  <div class="pin prose">
+    <button class="btn back" data-go="main">← <span data-i18n="set_back">Zurück zu den Platzrunden</span></button>
+    <p class="muted" data-i18n="imp_note"></p>
+    <h1>Über dieses Projekt</h1>
+    <p>Interaktive 3D-Darstellung der Platzrunden von Schweizer Flugplätzen für die Vorbereitung von VFR-Flügen. Ein privates Projekt aus Freude an der Fliegerei und an Webtechnologie, umgesetzt mit HTML5, JavaScript und three.js.</p>
+    <p>Kontakt: Christoph Umbricht, <span class="ph-fill">[E-Mail-Adresse ergänzen]</span></p>
+    <div class="warnbox"><strong>Nicht für den operationellen Gebrauch.</strong> Die Informationen auf dieser Website dienen ausschliesslich der Information und Übung. Nicht für die Navigation verwenden. Die Daten können veraltet, ungenau oder fehlerhaft sein. Für die Flugvorbereitung gelten immer die aktuellen offiziellen Unterlagen (AIP, VFR Manual, VAC, NOTAM).</div>
+
+    <h2>Quellen und Rechte</h2>
+    <ul>
+      <li>Luftbild (SWISSIMAGE), Landeskarte und Höhendaten (swissALTI3D / DHM25): © swisstopo – <a href="https://www.swisstopo.admin.ch/de/nutzungsbedingungen-kostenlose-geodaten-und-geodienste" target="_blank" rel="noopener">Nutzungsbedingungen</a>, Daten über <a href="https://api3.geo.admin.ch" target="_blank" rel="noopener">api3.geo.admin.ch</a> und <a href="https://wmts.geo.admin.ch" target="_blank" rel="noopener">wmts.geo.admin.ch</a></li>
+      <li>Platzrunden, Volten-Höhen, Meldepunkte und Frequenzen: abgeleitet aus den Sichtanflugkarten (VAC) im VFR Manual Schweiz, © skyguide – <a href="https://www.skybriefing.com" target="_blank" rel="noopener">skybriefing.com</a> (Stand der Karten: 01 OCT 2026)</li>
+      <li>Pistendaten: AIP Schweiz (skyguide) und <a href="https://ourairports.com/data/" target="_blank" rel="noopener">OurAirports</a> (Public Domain)</li>
+      <li>3D-Bibliothek: <a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> (MIT-Lizenz), ausgeliefert über cdnjs und jsDelivr</li>
+      <li>Schriften: Barlow, Barlow Condensed und JetBrains Mono über <a href="https://fonts.google.com" target="_blank" rel="noopener">Google Fonts</a> (SIL Open Font License)</li>
+      <li>Links zu Flugplatz-Websites: Die Inhalte gehören den jeweiligen Betreibern.</li>
+    </ul>
+
+    <h2>Impressum</h2>
+    <h3>Kontaktadresse</h3>
+    <p>Christoph Umbricht<br><span class="ph-fill">[Strasse und Hausnummer ergänzen]</span><br>5417 Untersiggenthal<br>Schweiz</p>
+    <p>E-Mail: <span class="ph-fill">[E-Mail-Adresse ergänzen]</span></p>
+
+    <h3>Haftungsausschluss</h3>
+    <p>Der Autor übernimmt keinerlei Gewähr hinsichtlich der inhaltlichen Richtigkeit, Genauigkeit, Aktualität, Zuverlässigkeit und Vollständigkeit der Informationen.</p>
+    <p>Haftungsansprüche gegen den Autor wegen Schäden materieller oder immaterieller Art, welche aus dem Zugriff oder der Nutzung bzw. Nichtnutzung der veröffentlichten Informationen, durch Missbrauch der Verbindung oder durch technische Störungen entstanden sind, werden ausgeschlossen.</p>
+    <p>Alle Angebote sind unverbindlich. Der Autor behält es sich ausdrücklich vor, Teile der Seiten oder das gesamte Angebot ohne besondere Ankündigung zu verändern, zu ergänzen, zu löschen oder die Veröffentlichung zeitweise oder endgültig einzustellen.</p>
+
+    <h3>Haftungsausschluss für Links</h3>
+    <p>Verweise und Links auf Webseiten Dritter liegen ausserhalb unseres Verantwortungsbereichs. Es wird jegliche Verantwortung für solche Webseiten abgelehnt. Der Zugriff und die Nutzung solcher Webseiten erfolgen auf eigene Gefahr des jeweiligen Nutzers.</p>
+
+    <h2>Datenschutzerklärung</h2>
+    <p>Verantwortlich für die Bearbeitung von Personendaten im Sinne des schweizerischen Datenschutzgesetzes (DSG) und, soweit anwendbar, der EU-Datenschutz-Grundverordnung (DSGVO):</p>
+    <p>Christoph Umbricht, 5417 Untersiggenthal, Schweiz<br>E-Mail: <span class="ph-fill">[E-Mail-Adresse ergänzen]</span><br>Website: <span class="ph-fill">[Domain ergänzen]</span></p>
+
+    <h3>Allgemeiner Hinweis</h3>
+    <p>Gestützt auf Artikel 13 der Bundesverfassung und die datenschutzrechtlichen Bestimmungen des Bundes hat jede Person Anspruch auf Schutz ihrer Privatsphäre sowie auf Schutz vor Missbrauch ihrer persönlichen Daten. Diese Website kann ohne Registrierung genutzt werden. Es gibt keine Benutzerkonten, keine Formulare, keine Werbung und keine Analyse- oder Tracking-Werkzeuge.</p>
+
+    <h3>Welche Daten anfallen</h3>
+    <ul>
+      <li><strong>Einstellungen im Browser:</strong> Sprache, Farbe und Dicke der Platzrunde, Anflugwinkel und die Anzeige der Kurvenhöhen werden im lokalen Speicher (localStorage) Ihres Browsers abgelegt. Diese Daten verlassen Ihr Gerät nicht und können jederzeit über die Browsereinstellungen gelöscht werden. Es werden keine Cookies gesetzt.</li>
+      <li><strong>Server-Log-Dateien:</strong> Der Hosting-Provider dieser Website speichert beim Aufruf automatisch technische Angaben wie IP-Adresse, Browsertyp und -version, Betriebssystem, Referrer-URL sowie Datum und Uhrzeit des Zugriffs. Diese Daten werden nicht mit anderen Datenquellen zusammengeführt und dienen dem sicheren Betrieb.</li>
+      <li><strong>Dienste Dritter:</strong> Beim Anzeigen der Karte lädt Ihr Browser Inhalte direkt von Servern Dritter. Dabei wird Ihre IP-Adresse an diese Anbieter übermittelt:
+        <ul>
+          <li>Bundesamt für Landestopografie swisstopo (Luftbild, Landeskarte, Höhendaten), Schweiz</li>
+          <li>Cloudflare, Inc. (cdnjs) und jsDelivr (three.js), USA bzw. weltweit</li>
+          <li>Google Ireland Ltd. / Google LLC (Google Fonts), Irland bzw. USA</li>
+        </ul>
+        Für die Bearbeitung durch diese Anbieter gelten deren eigene Datenschutzbestimmungen. Bei Anbietern in den USA kann eine Übermittlung in ein Land ohne angemessenes Datenschutzniveau stattfinden.</li>
+    </ul>
+
+    <h3>SSL-/TLS-Verschlüsselung</h3>
+    <p>Diese Website nutzt aus Sicherheitsgründen eine SSL-/TLS-Verschlüsselung. Eine verschlüsselte Verbindung erkennen Sie an «https://» und am Schloss-Symbol in der Adresszeile des Browsers.</p>
+
+    <h3>Ihre Rechte</h3>
+    <p>Sie haben im Rahmen des anwendbaren Datenschutzrechts das Recht auf Auskunft über Ihre bearbeiteten Personendaten, auf Berichtigung, Löschung und Einschränkung der Bearbeitung, auf Datenherausgabe oder -übertragung sowie das Recht, einer Bearbeitung zu widersprechen und eine erteilte Einwilligung zu widerrufen. Wenden Sie sich dazu an die oben genannte E-Mail-Adresse. Sie haben zudem das Recht, sich beim Eidgenössischen Datenschutz- und Öffentlichkeitsbeauftragten (<a href="https://www.edoeb.admin.ch" target="_blank" rel="noopener">EDÖB</a>) zu beschweren.</p>
+
+    <h3>Allgemeiner Haftungsausschluss</h3>
+    <p>Alle Angaben dieser Website wurden sorgfältig zusammengestellt. Trotzdem kann das Auftreten von Fehlern nicht ausgeschlossen werden. Es wird keine Garantie für Vollständigkeit, Richtigkeit und Aktualität übernommen. Haftungsansprüche aus Schäden materieller oder ideeller Art, die durch die Nutzung der angebotenen Informationen verursacht wurden, sind ausgeschlossen, sofern kein nachweislich vorsätzliches oder grob fahrlässiges Verschulden vorliegt. Die Benutzung der Website geschieht auf eigene Gefahr.</p>
+
+    <h3>Änderungen</h3>
+    <p>Diese Datenschutzerklärung kann jederzeit ohne Vorankündigung angepasst werden. Es gilt die jeweils aktuelle, auf dieser Website publizierte Fassung.</p>
+    <p class="muted">Stand: Oktober 2026</p>
+  </div>
+</section>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script>
+const AIRPORTS={"LSZB":{"name":"Bern-Belp","icao":"LSZB","elev":1675,"freq":"ATIS 125.130 · TWR 121.030","rwy":{"c":[2604529.5993921245,1195806.8115282436],"brg":140.06991148880547,"len":1730,"wid":30,"lo":"14","hi":"32","thr":{"14":200,"32":0}},"marks":[["TWY A",640,"14"],["TWY F",1510,"14"]],"circuits":[{"id":"14","land":"14","label":"Piste 14 · Ost 3000 ft","alt":3000,"vol":"links · Ost","s0":640,"tdp":640,"tdpName":"TWY A","pts":[[[2606433.473333333,1193418.1133333333],"Querabflug",1],[[2607593.4066666667,1194281.7133333334],"Gegenanflug",0],[[2604054.34,1198709.78],"Queranflug",0],[[2602902.8733333335,1197820.78],"Endanflug",1]],"name":null,"hand":"L","side":"E","var":null},{"id":"32","land":"32","label":"Piste 32 · West 2800 ft","alt":2800,"vol":"links · West","s0":220,"tdp":220,"tdpName":"TWY F","pts":[[[2603470.14,1196991.0466666666],"Querabflug",1],[[2601920.74,1196737.0466666666],"Gegenanflug",0],[[2605332.8066666666,1192444.4466666668],"Queranflug",0],[[2606619.74,1193206.4466666668],"Endanflug",1]],"name":null,"hand":"L","side":"W","var":null}],"rps":[["E1 · max 4500 ft",[2608253.8066666666,1199437.9133333333]],["Z1 · max 4000 ft",[2608203.006666667,1190683.38]],["HE · Heli",[2609608.473333333,1195509.38]],["HW · Heli",[2600972.473333333,1192630.7133333334]],["W",[2596569.8066666666,1197676.8466666667]],["S",[2604579.2733333334,1188058.7133333334]]],"places":[["Belp",[2605375.14,1193003.2466666666],1],["Kehrsatz",[2602411.8066666666,1196068.18],0],["Rubigen",[2608033.6733333333,1194628.8466666667],0],["Muri b. B.",[2603901.94,1198134.0466666666],0],["Münsingen",[2609354.473333333,1192292.0466666666],0],["Wabern",[2600007.2733333334,1197947.78],0],["Worb",[2609727.006666667,1197964.7133333334],0],["Toffen",[2603732.6066666665,1189582.7133333334],0],["Gümligen",[2604951.8066666666,1198642.0466666666],0],["Köniz",[2597467.2733333334,1197372.0466666666],0],["Bern",[2599617.8066666666,1200284.58],1],["Ostermundigen",[2602581.14,1200081.38],0]],"peaks":[["Gurten 2815 ft",[2600306,1196363]],["Ulmizberg 3074 ft",[2600306,1193283]],["Belpberg 2930 ft",[2606637,1189587]],["Bantiger 3107 ft",[2607788,1203139]],["Längenberg",[2599730,1186507]],["Dentenberg",[2612680,1201907]]],"note":"Linksvolten; Aufsetzpunkt Single-Engine auf Höhe TWY A (14) bzw. F (32), Start ab Intersection A bzw. F","dem":{"e0":2596000,"e1":2612979,"n0":1186500,"dn":616,"rows":[[703.3,703.4,693.7,666.7,738.2,739.5,772.9,774.8,823.3,843.4,896.2,890,924.2,1003.5,997.3,970.7,951.5,944.4,923.2,936.1,938.5,942.9,957.2,913.9,877.4,824.5,798.6,747.6,684,645.7,607.3,588.9,539.7,537.7,536.6,537.8,536.3,536.6,547.1,579,597.7,607.5,603.1,602.1,624.4,592.4,557.7,532.2,532.7,532.9,533,532.9,563.6,564,560.8,559,597.3,607.2,609.6,579.9],[758.9,727.5,759.9,793.2,827.8,843.8,813.8,814.1,798.1,838.4,900.5,909.9,901.9,868.3,878.8,830.3,828.6,823.5,840,863.6,877.3,886.9,907.9,930.3,928,861,791.9,706.4,651.8,601.7,574,540.8,534.6,534.9,533.3,534.3,536.7,593.8,618.4,651.3,671.1,639.4,619.9,604.3,617.2,605.6,531.7,531.9,531.1,530.9,531.8,533.3,572.1,555.2,570.2,600.2,620.3,638,629,627.6],[823.1,825.1,855.8,845.7,806.5,791.2,760.6,773.3,835.1,840.2,806.4,811,785.1,818.2,804.5,835.6,882.5,901.8,954.4,962.8,979,961.5,937.3,934,937.6,935.7,751.5,683.6,616.6,573.8,534.5,532,532.6,532.8,535.8,559.4,606.3,653.1,748.3,794.9,782.4,719.6,649.2,637.9,618.6,558.5,529.8,529.3,529.5,530,533.1,555.8,549.4,599.3,615.2,637.6,686,697.2,715,731.5],[787.6,783.3,762.6,762.9,741.9,747,718.4,710.4,699.3,745.7,764.7,786.8,845.6,825.9,814.9,840.7,885.4,895.3,932,981.5,985.6,971.6,950.7,935.9,917.7,883.7,795.5,659.2,592.6,547.3,531.9,532.5,531.9,565.3,660.7,712.7,745.3,785.4,811.2,834.6,799.4,754.4,694.7,645.2,611.5,531.9,528.3,528,529.3,531.2,532,548.4,598,605.4,623.8,675.4,701.7,737,779.6,815.3],[764.8,610.5,648.5,765.9,776.5,816.2,784.9,814.9,828.3,765,777.9,832.3,824.2,854.2,874.3,921.2,901.6,944.9,955.8,950.6,921.7,905.1,894,889.9,875.3,832.8,793.8,630.3,558.3,529,528.8,530.2,545.2,718.3,782.9,779.4,808.7,825.4,848.7,809.4,811.9,775.9,745.7,636.9,578.8,527.7,527.3,526.7,529.3,530.5,538.5,554.1,588.7,616.6,649.7,656.8,673.9,717.1,771.7,812.3],[659.2,746,789.1,790.2,828.8,848.8,866.3,925.9,921.6,922.5,865.4,865.4,864.6,871.4,870.5,873.7,902.7,897.9,891.6,882,859.9,853.2,857.7,854.6,827.7,764.5,719.1,594.1,543,527,528,529.4,584.3,676.7,734.7,792.9,838.3,866.1,817.3,778.6,798.8,747.8,667.8,628.7,524,525.6,525.4,528.2,528.9,531.6,548.8,586.6,599.5,632.3,660.2,661.2,703.2,722.4,759.8,783.1],[668.6,707.1,719.8,741.3,752.1,769.4,813.3,795.3,801.9,834.2,902.8,938.6,901.7,867.5,867.1,856.4,815.5,834,812.6,802.5,834.3,841.3,844.2,828,789.9,758.9,714,583.3,530.3,525.7,524.9,527.6,601.4,709.3,800.7,819,843.9,806.3,790.7,760.2,715,663.6,626.8,531.4,524,523.9,523.8,523.9,530.6,546.5,571.6,605.5,617.8,653.8,679.8,680.5,691.3,743.4,797.9,833.3],[837.3,821.6,751.1,804.9,825.2,870.6,869.8,814.1,832,884.2,875.4,836.8,830.9,788.2,758.6,755.4,765.3,776.5,816.8,849.5,862.5,864.1,876.8,863.4,813.4,773.7,683.1,586,539.4,524.3,525.4,524,597.9,705,784.5,822.7,802.6,800.3,773.7,768.5,723.5,618.3,523.7,522.8,522.9,524,523.5,528.8,534.4,557.8,580,603.8,622.6,652.4,673.4,676.2,664.3,698.7,716.6,742.4],[752.1,732.1,705.3,753.3,778.9,774.6,787.3,834.8,765.6,790.8,771.3,760.9,727.4,775.9,797.1,848.4,823.1,866.8,898.7,902.3,902.5,892.2,862.6,844,807.7,779.2,737.9,618.2,587.4,522.8,523.8,527.8,586.8,717.8,785.4,826.2,806.2,770.7,712.3,599.8,525.5,521.8,521.2,522.1,522.6,525.4,531.3,540,550.6,580.8,590.4,596.2,602.6,615.7,618.8,618.2,617.8,622.8,656.9,668.1],[696,701.6,718.8,729.1,706.9,728.1,714.7,691.7,709.1,734.7,746.9,758.4,742.2,790.6,810.1,892.8,944.4,959.2,940.9,918.7,900.5,884.4,851.8,837,817.6,771,742.2,684.4,609.3,534.6,523.6,522.1,558.9,679.6,753.2,803.7,800.3,730.5,579,518.5,519.6,520.8,519.7,525.3,526.2,527.1,541.2,562.8,573.9,586.1,594.2,623.9,612,621.8,648.9,684.5,704.2,685.6,676.6,664.3],[657,665.1,709.5,764.1,765,776,777.7,794.2,736.8,831.6,853.6,855.9,901.7,836,820.2,845.7,858.1,915.9,899.1,890.8,896,876.3,852.7,831.1,835.9,805.3,744.5,728.2,641.3,568.9,523.8,522.6,534.7,553.8,576.2,630.3,653.6,526.6,517.3,517.2,518.4,521,517.1,521.3,525.7,536.3,560.9,567.3,589.2,587.9,636.3,631.1,642.9,683.2,722,754.4,782.4,812.9,799.9,794.4],[671.5,663.4,648.9,674.9,694.3,701.1,713.8,726,722.8,715.6,740.6,760.6,827.9,845.3,921.3,931,912.2,865,855.9,868.1,890.7,870.6,851.4,832.2,832.4,748.4,735.4,669.1,591.5,551.5,517.3,521.1,520,518.7,516,515.1,515.5,516.1,515.7,516.5,518.2,524.9,525.2,529.8,552.4,565.2,577.9,592.7,585.8,590,622.4,650.3,674.9,720,741.4,744.8,783.3,841.2,877.1,906.1],[640.9,643.2,637.7,641.2,645.5,655.2,674.3,694.8,724.7,701.6,822.8,845.5,834.5,836.8,811.4,798.5,820.7,843,823.3,834.7,863.5,859.9,829.7,824.1,757.9,692.2,647.9,572.9,535.6,521,515.5,514.8,515.4,514.7,514.4,514.5,514.8,513.9,514.8,515.7,525,530.7,531.7,550.3,564,585.2,588.9,583.2,583.1,590.2,618.8,635.4,684.2,735.6,735.8,738.7,804.5,850.5,883.7,868.6],[695.6,682.5,661.1,643.4,653.1,666.5,690.3,704.5,710.2,728.7,684.6,740.9,860.6,869.5,916.6,883.3,739.1,768.4,786.4,785.2,784.7,793.2,792.8,717.3,664.6,611.8,557.8,511.4,510.1,511.8,510.1,512.7,513.4,512.3,513.3,513,513.4,514.8,514.5,539.6,538.9,545.1,551.9,564.8,580,588.7,589.7,581.4,583.2,599,611.9,634.4,644.4,681.4,706.7,730.8,733.2,742.6,769.2,790.4],[726.3,710.6,648.2,635.6,642.4,661.7,678.5,668.3,666.1,695.7,640.1,715.6,754.5,748.6,682.9,653.4,643,642.4,636,626.5,623.5,605,593.6,575.8,552.4,514.6,508.1,508.2,509.7,509.4,513.8,511.3,511.7,510.9,511.1,513.6,566.5,567.6,560.3,560.2,549.1,557.4,565.1,580.8,586.7,583.6,581.5,580.4,595.5,635.7,639.5,624.5,643,656.4,688.5,729.6,742.5,722.1,738.4,750.4],[639,629.8,620.9,612.7,613.6,649.6,655.4,648.7,630.6,648.1,676.3,637,604.3,652.2,672.8,730.5,811.5,808.3,786.8,741.9,694,640.4,568.2,562.9,533.1,507.5,507.1,508,508.2,508.5,509.3,510.4,511.5,531.4,571,598.5,587.9,593.8,577.9,573.4,562.5,569.7,574.4,575.3,592.4,594.2,600.4,605.9,613.4,610.3,613.5,620.2,643.6,648.5,653.7,668.6,676.4,688.5,712.3,728.6],[671.1,647.7,623.8,598.3,583,591.2,577.4,608.5,609.5,589.2,646.8,660.4,716,810,840.7,847.2,811.2,778.3,715.8,661.3,595.6,564.2,561.9,563.6,534.9,507,506.9,507.1,508.2,508.8,510.2,531.4,571.6,571.6,583.5,587.8,592.1,576.9,564.3,566.5,562.6,565.5,585,607.6,626.9,635.5,632.8,618.4,612.9,603.5,604.4,622,631.6,652.1,658.5,665.1,680.8,698.5,707.9,723.7],[605.3,624.5,655.3,648.6,631.9,609.5,596.7,569.8,573.6,591.5,619.4,626.2,636.7,648.9,684.1,688.6,681,651.7,580.9,561.4,556.7,547.2,527.9,505.5,508,507.4,507.7,508.2,521.6,529.3,568.9,567.4,566.8,571,594.2,592.2,578.2,572.7,565.9,570.8,581.5,591.2,596.9,638.3,634.7,665.4,642.7,592.3,589.3,597.1,615.8,619.8,639.8,654.4,657.4,684.4,757.9,788.3,812.7,807.5],[582.5,608.3,628.3,637.3,663.3,637.2,606.1,591,566.8,563.3,563.8,572.5,592.4,564.4,561.2,552.7,556.2,550.4,546.6,534.5,528.3,505.5,529.3,538.2,538.2,537.6,542.5,555.7,574.3,581,580,559.3,560.2,569.6,566.8,571.7,582.1,583.1,587.3,597.3,615.6,630.6,625.6,607.1,583.2,574.5,579,582.5,613.6,638.5,645.9,665.6,679.3,686.3,687.7,676.7,696.1,734.1,775,747.1],[560.3,562.7,562,575,623.7,606.1,594.6,575.9,554.7,556.2,559.2,576,546.5,541.9,531.7,515.3,509.5,516.9,521,503.2,532.8,538.9,541.7,554,550.5,553.7,561.7,557.9,559.4,558.3,559.3,559.1,564.8,573,587.6,591.6,594.6,615.6,643.4,669.8,677.5,675.1,650.5,596.2,565.5,567.9,570.5,624,661.9,656.2,702.2,757.8,791.6,821.7,796.7,761,692.2,686.4,687.5,693.6],[561.7,558.1,558.4,561.4,560.4,563.9,559.9,561.6,552.7,548.9,546.3,537.2,527.4,517.2,507.2,503.1,521.9,529.2,539.6,551.2,554.4,553.4,549.6,552.8,551.1,554,554.4,554.6,554.1,555,562.2,609.3,620.5,660.6,689.7,706.3,711.7,718.3,726.5,726.4,704.4,716.9,707.9,570.7,559.5,560.2,584.7,643.4,661.3,684,707.8,744.1,780.6,803.4,780.8,760.6,741.7,720.5,714.9,688.3],[558.1,555.2,554,555.4,552.7,545.2,551.2,550.8,540.6,549.2,540.5,530.3,528.1,533.6,539.6,539.4,514.9,501.5,500.7,510.2,560.5,560.7,564.7,564.4,576,573.1,551.2,558.3,562.8,623,679.5,694,710.8,653.6,743.6,744.1,723,738.3,717.9,645.8,584.2,598.3,593,555.1,557.8,573.8,600.1,628.9,717,784.4,794.6,777,774.1,803.8,855.8,879.9,822.1,809.1,796.6,746.4],[556.4,550.3,555.4,550.3,547.2,549.8,551.6,550.7,552.4,550.9,549.7,549.1,560.9,560.3,559.1,529.4,510.6,534,544.4,526.9,570.3,584.2,584.5,578.9,577.4,581.1,556,551,583.3,603.4,643.6,659.5,691,599.9,679.7,665.2,696.3,668.2,598.3,551.5,551.5,562.2,558.2,560.9,573.5,587.7,619.8,656.4,694.6,736.7,771.7,763.5,778.7,791.7,807.7,837.4,878.1,909.2,881.1,856],[546.7,529.9,553.2,548.8,549.5,551.2,550,549.1,550.8,552.5,555.4,564.9,566.5,558.6,538.4,526.9,539,552.8,566,559.2,558.8,559.6,561.4,560.9,561.5,553,553,551.7,547.6,555.5,572.5,594.8,608,561.4,548.6,550.9,550.2,553.5,550.9,564.5,594.7,592,615.9,568.2,596.9,676.6,690.6,676.5,670.3,699.6,738.7,778.4,810.5,847.3,823.8,839.7,861.5,909.5,880.4,886.4],[492.8,505.5,516.5,537.1,550.1,550.2,549.2,546.8,549.9,559.9,562.7,565.9,571.1,575.2,565,495.4,546.3,553.9,554.7,553.7,554.7,557.4,555.1,572.5,558.6,550.7,549.6,549.4,547.6,548.2,570.6,599.6,555.8,546.1,569.6,631.7,637.1,637.1,678,682,697.2,735.2,757.6,664.8,573.8,626.5,699.6,727.4,713.7,713.7,735.4,778.5,790.2,812.4,846.6,895.2,925.3,909,869.6,790.9],[496.2,490,490.7,480.9,499.4,493.8,526.5,514.3,535.1,527.5,561.8,562.8,570.3,483.4,497.6,528.8,491.7,526.3,553.2,539.3,550.8,550.9,547.3,557.6,567.9,571.1,568.7,544.3,546.2,547.1,540.2,565.9,582.2,606.7,650.6,665.5,685.7,714.2,726.7,729.8,739.9,736.5,712.4,607.2,581.3,685.8,773.5,802.4,843.2,797.8,761.7,761,775,803.1,821.6,864.8,927.8,933,935.8,925.9],[584.7,582.7,581.8,583.7,588.6,571.3,552.9,574.3,568,508.8,498.8,481,483.7,513.5,485.3,526.5,548.7,533.4,530.6,525.8,520.5,489.1,532.3,539.6,520,525,527.3,544.8,567,576.7,580.8,601.8,623,656.4,688.4,708.1,762.5,853.1,806.4,807.4,806.5,812.5,799.7,735.6,586.2,672.8,713.2,785.2,822.7,872.3,849.4,807.4,806.7,807.8,823.1,834.6,886.9,916.6,872.7,827.9],[584.2,583.5,580.9,580,583.9,594.9,591.1,586.1,573.2,587.7,572.5,589.2,576.4,542.6,519.9,487.8,484.1,533.5,487.2,520.6,521.1,544.2,529.4,556.5,558.2,565.8,580,591,607.2,593,613.3,630.6,677.7,815,813.4,746,784.1,882.5,840.9,861.4,863.3,908.3,865.1,751.9,616.9,608.3,677,727.7,803.3,815,851.8,840.9,824.9,879.1,910.6,927.1,931.4,843,893.9,897.4],[616.6,590.3,587.5,584.7,594.9,583.6,580.6,589.9,586.2,584.4,583.5,574.9,576.6,584.8,543,501.3,486.4,528,508,538.7,542.8,543.2,547.3,550.3,564.9,592.4,680.6,612.6,637.3,644.1,649.1,659.4,685.2,792.1,815.9,759.5,802.6,830.1,776.1,733.4,820,810.9,868.2,779.7,647.2,630.6,765.3,834.8,831.1,865.4,865,859.2,775,808.2,883.5,899.3,866.9,818.6,773.1,824.2],[624.2,632.3,603.9,586.2,581.2,575.5,570.9,573.4,579.6,569.4,573.4,570.9,576.4,577.1,575.4,564.4,542.3,490.3,512.9,546.9,554.3,553.2,560,582.5,583,589.9,616.1,693,763,736.3,735.9,739.4,697.9,686.8,678.2,697.7,723.2,755.4,698.2,679.8,732,709.8,686.2,782.5,685.5,607.2,738.8,722.5,773.6,814,842,769.2,755.7,809.3,838.8,847.6,841.8,800.9,787,701.4],[601.9,594.6,591.3,594.2,613.5,591.3,587,584.5,582.8,580.8,578.9,567.9,558.2,555.7,554.1,539,541.1,545.7,560.7,554.2,555.6,554.4,564.1,580,609.2,604.5,603.4,611.3,658.1,771.1,791.3,793.1,768.2,769.7,750.1,683.9,669.3,720,690.8,671.2,602.3,700.6,702.1,689,657.8,613.8,634.7,621.1,678.4,769.4,743.3,758.4,780.7,738.7,708.3,783.4,811.9,825.5,819.9,793.3]]},"frame":[2596000,1186500,2612979,1204980],"freqs":[["ATIS","125.130"],["TWR","121.030"],["TWR ALTN","119.700"],["BERN APP","127.325"],["EMERG","121.500"]],"web":"https://www.bernairport.ch"},"LSZF":{"name":"Birrfeld","icao":"LSZF","elev":1296,"freq":"AD 123.555 · GLD 119.830","rwy":{"c":[2659976.021333333,1255102.3873333335],"brg":82.77181009001598,"len":718,"wid":20,"lo":"08","hi":"26","thr":{"26":0,"08":73}},"grass":{"off":-75,"len":690,"wid":30,"name":"08R/26L Gras"},"marks":[],"circuits":[{"id":"08","land":"08","label":"Piste 08 · Nord 2000 ft","alt":2000,"vol":"links · Nord","s0":0,"tdp":173,"tdpName":"","pts":[[[2661550.8213333334,1255313.2073333333],"Querabflug",1],[[2661550.8213333334,1256371.5406666666],"Gegenanflug",0],[[2658646.7546666665,1256032.874],"Queranflug",0],[[2658646.7546666665,1254932.2073333333],"Endanflug",1]],"name":null,"hand":"L","side":"N","var":null},{"id":"26","land":"26","label":"Piste 26 · Nord 2000 ft","alt":2000,"vol":"rechts · Nord","s0":0,"tdp":100,"tdpName":"","pts":[[[2658646.7546666665,1254932.2073333333],"Querabflug",1],[[2658646.7546666665,1256032.874],"Gegenanflug",0],[[2661550.8213333334,1256371.5406666666],"Queranflug",0],[[2661550.8213333334,1255313.2073333333],"Endanflug",1]],"name":null,"hand":"R","side":"N","var":null}],"rps":[["E · Ausflug",[2664598.8213333334,1251630.2073333333]],["Sektor West",[2652279.8213333334,1258031.0073333334]],["Sektor Nord",[2660153.8213333334,1263238.0073333334]],["Einflug Süd · PPR",[2659984.488,1250199.3406666666]],["Einflugkreis ①",[2659688.154666667,1255575.674]]],"ring":{"c":[2659688.154666667,1255575.674],"r":550.3333333333334,"alt":2000},"places":[["Lupfig",[2657359.8213333334,1255067.674],0],["Birr",[2657656.154666667,1253772.274],0],["Hausen",[2658672.154666667,1257396.0073333334],0],["Birmenstorf",[2661720.154666667,1257607.674],0],["Mülligen",[2660831.154666667,1256591.674],0],["Rütihof",[2662736.154666667,1255110.0073333334],0],["Birrhard",[2661339.154666667,1254178.674],0],["Brugg",[2658426.621333333,1260444.0073333334],1],["Baden",[2665487.8213333334,1258412.0073333334],1],["Wettingen",[2666757.8213333334,1257904.0073333334],0],["Lenzburg",[2652533.8213333334,1249268.0073333334],1],["Mellingen",[2663633.621333333,1252570.0073333334],0],["Windisch",[2658934.621333333,1258412.0073333334],0],["Mägenwil",[2660915.8213333334,1252062.0073333334],0]],"peaks":[["Bözberg 1867 ft",[2652152.8213333334,1259478.8073333334]],["Heitersberg 2300 ft",[2666630.8213333334,1253713.0073333334]],["Habsburg",[2658587.488,1257396.0073333334]]],"note":"Volte nördlich der Piste, Gegenanflug 2000 ft; Aufsetzpunkt 100 m nach der Schwelle","dem":{"e0":2651010,"e1":2668002,"n0":1246499,"dn":770.8,"rows":[[546.4,506.2,463.5,436.7,460.7,492.6,469.6,436.3,426.4,427.5,437.4,441.2,441,436.9,441.6,414.4,470.9,512.4,499.5,488.5,497.1,500.2,473.1,506.3,483.6,472.1,504.1,550.4,518.7,485.2,436,431,427.8,424.8,415.4,409.1,409.1,410.6,408.6,427.5,468.1,482.7,489.2,493.4,484.8,484.6,460.5,445.6,435.6,415.6,411.3,399.3,396.5,371.8,366.5,366.7,367.2,375.6,359.3,362.4],[438.4,428.2,433.1,417.3,444.1,471.6,455.5,422.8,418.5,414.8,388.4,429,429.9,429,429.3,418.1,424.6,428.6,427.9,430.7,447.9,498.8,535,525.4,480.7,445,444.6,443.8,475.2,429.4,425.1,424.1,421.7,419.9,408.9,408,412.6,432.1,490.2,537.9,544.2,534.9,511.8,485.3,472,450,436.3,428.6,416.2,395.9,387.5,367.1,358.8,359.8,355.4,358.7,358.9,361.8,364.2,402.1],[411.1,411.5,402.6,407.8,437.5,463.3,437.9,412.2,410.6,412.8,414.4,418.9,467.7,501,420.3,412.5,398.9,416.5,422.1,451.3,437.8,462.3,498.2,488.5,488,471.2,448.7,416.4,417,418.1,418.9,416.6,418.3,419.6,405.6,418.6,454.4,458,493.9,505.1,533,536,519.6,479.7,483.4,458.6,425.4,408.3,391.9,379.7,362.6,373,362.2,361.3,362.6,357.1,356.7,404.5,435.3,471.6],[403.7,394.8,397.2,399.2,399.7,400.3,401.8,400.6,373.6,402.6,406.4,406.6,410.5,411.1,410.7,411.2,401,402.6,429.1,473.4,479.4,433.3,437,478.6,459,418.3,410.3,410.4,402.3,409.9,420,421.6,427.3,444.1,490.2,463.2,461.5,476,488.7,528.5,545.1,534.2,513.3,484.6,461.7,435.2,392.6,387.1,378.2,369.5,371.2,367,373.9,373.8,376.7,400.5,402.1,445.5,474.7,512.1],[386.1,398.6,398.6,397.7,388.4,393.3,393.9,392.4,395.9,396,395.3,396.7,399.1,401.6,404.2,401.6,400.3,389.5,432.1,432.1,431.9,431,434.8,427,417.3,405.2,405.6,396.9,414.7,426.7,440.6,459.7,469,514.9,536,510,476.3,486.9,507.6,538.5,555.8,536.5,475.2,497,444.4,398.6,380.9,371.1,367.6,349.5,349.9,369.8,403.7,428.2,408.3,413.7,432.3,456.3,520.4,568.4],[378.3,376.6,375.7,374.8,373.4,375,377.3,379.8,381.1,382.6,382.3,390.9,393.1,394.1,393.2,393,378.8,395.3,409.6,413.6,415.3,418.7,422,424.6,427.4,402.5,394.3,403.8,419.4,446.4,513.1,533.9,545.8,562.4,550.9,533.2,509.7,475.6,536.1,502.7,487.5,454.5,437.7,394.8,387.8,378.3,362.9,361.1,365,374.8,386.8,392.2,412.5,397.7,404,422.1,474.2,541.5,562.8,601.6],[355.7,355.8,355.1,353.4,353.3,352.8,356.8,356.7,355.5,364,361.4,373.2,373.2,382.6,376.9,374.2,388.5,397.6,400,377.4,380.5,391.1,396,413,416.5,418.5,421.2,422.6,431.2,463.9,445.2,506.5,483.7,465.6,443.8,497.3,491.9,456.7,436.8,404.1,360.8,360.2,377.4,377.6,368.5,346.6,371.6,378.5,387.8,409.9,398.9,397.9,399.6,409.3,426.1,512.4,529.5,561.1,603.6,644.6],[423.7,436.7,433.4,418.3,403,368.4,357.6,363.8,367.8,372.2,352.6,348.3,353.3,352.1,354.2,375,362.6,383.4,387.5,397,403.4,408.5,413.9,418.3,422.8,427.2,429.3,429.1,419.1,414.6,413.7,413,415.9,412.3,399.1,396.5,396.7,380.6,353.8,349.3,356.5,355.9,352.2,345.3,379.1,379.7,384.3,410,420.1,413.8,409.5,413.2,433,461.3,511.5,546.8,569.4,609.9,650.7,668.4],[570.3,536.2,519.4,499.1,465.5,462.6,451.6,434.9,418.7,412,395.5,383.4,349.1,348.5,348.9,406,437.9,456,450.7,468.1,477.3,513.4,535.8,518.2,561.3,575,543.7,418.7,409.9,409.9,423.1,416.7,416.9,414.7,401.4,404.6,414.8,398.7,365.3,343.9,348.1,353.8,358.9,389,409.6,416.4,433.2,426,423,427.5,435.9,457.2,482.3,507.7,547,577.9,613.7,664.1,684.4,642],[634.2,617.9,618.2,603.2,596.6,549.4,517.8,502.3,473.3,422.4,405.5,362.1,346.7,346.2,369.8,406.5,436,476.9,564.4,525.7,521.2,487.3,452.6,439.5,420.5,409.2,404.4,405.5,402.9,404.2,405.9,407.3,409.1,406.1,394.3,388.6,368.6,371.2,358.2,388.6,386.1,383.9,396.9,400,418.7,423.5,423.3,433.1,459.7,448.1,464.5,516.4,542.7,582,620.5,665.8,701.1,637.6,563.8,523.8],[506,495.5,504.8,469.7,470,463.4,433.8,403.9,378.7,371.1,366.4,347.2,344.8,348,382.3,434.7,485,480.9,498.1,466.6,445.5,428.7,417.2,402.4,396,395.7,398.6,398.1,398.3,399,399.2,399.7,399.9,401.4,393.1,346.3,375.2,384.4,392.1,413.2,410.6,408.2,413.7,410.1,413.1,419.2,424.2,438.3,437.5,450.4,493.8,551.7,608,651.5,672,632,532.5,537.4,466.6,424.4],[502,451.3,430.2,420.6,411.8,390.2,388,395.8,372.4,355,350.8,349,344.6,348,352.6,433.7,494.6,461.9,431.1,422,431.9,414.1,394.9,391.8,390.6,388.7,390.3,391.4,392.5,393.2,393.8,394.9,396.3,397.6,401.1,395,381.3,351.3,389.2,391.8,410.5,425.2,410,408.4,410.4,418.6,422.3,438.6,454.1,492.3,550.4,624.4,629,590.7,522.8,457.4,439.8,404.5,403.5,386.9],[680,657.9,615.1,558.7,511.2,462.8,439.1,407.4,372.9,365.7,349.6,344.9,342.8,347.4,363.4,387.1,403.6,407.6,405.4,400.3,395.9,393.6,389.5,387.7,385.7,384.9,386,386.9,387.3,388.1,390.8,393.3,394.2,393.1,391.7,388.1,383.6,358.8,396.2,398.5,399.4,401,403.2,444.3,452.4,446.1,438.5,438.9,472.5,516.5,534.2,486.3,482.9,459.5,455.9,396.3,395.8,391.5,386.8,402.7],[722.8,619.7,524.8,498.9,442.7,436.3,426.8,428.2,403.6,370.3,362.1,345.8,341.7,342.6,357.9,426.7,436,437.7,449.1,449.1,454,437.2,414.2,402.7,385.6,380.2,391.3,413.8,443.4,445.4,385.4,363,365.2,367.8,367.8,337.1,362.5,369.8,383.9,393.4,419.5,423.3,440.4,450.8,429.7,420.9,458.4,508.2,514.5,460.6,451.2,398.7,378.5,371.7,380.8,382.5,380.2,399.3,405.9,407.4],[721.6,745.9,698.9,703.3,637.3,635.4,569.7,529.6,519,461.4,424,376,357,340.7,340.6,339.8,380.2,461.6,476.4,474.5,471,446.5,429.3,413.9,379.5,376,398,424,441.1,398.1,342.9,360.6,364.8,367,411.9,399.6,422.4,487.9,520.1,528.5,528.9,526.1,518.2,499.6,460,427.4,448,499.2,506.6,452.6,399.5,382.4,390.3,387.7,393.3,394,401.1,408.4,410.8,469.1],[556.9,537.4,549,542.4,566.7,576,509.1,457.9,428.4,412.9,391.1,377.2,363.2,357.3,340.4,340.5,333.9,335.3,337.8,335.3,347.4,348.6,389.7,421.2,386.1,372,374.2,387.2,406.1,365.2,363.5,335,378.5,417.4,464.4,472.2,461.7,469.9,500.9,536.4,551.5,561.7,567.5,569.3,568.5,549.7,504.5,472.6,408.7,392,384.8,352.1,387.7,388.8,391.7,400.8,409.9,422.7,438.6,453.6],[524.9,527.7,552.6,566.7,575.4,563.2,570.4,563.7,522.9,502.4,465.5,508.4,496.7,477,450.5,393.1,375.1,356.9,338,337,335.9,339.4,346.7,351.7,353.4,360.9,360.8,368.2,360.7,334.3,345.6,373.2,395.2,398.5,405.4,401,463.8,519.2,538.9,554.1,546.3,505.9,519.9,544.2,520.8,464.8,467.2,488.6,418.5,387.3,386.5,355.3,379.7,434.7,488.5,557.7,614.6,660,644.4,611.6],[573.4,535.8,491.1,543.3,555.3,581.1,585.1,567.2,545.1,527.1,521.3,505.2,515.9,514.6,494.8,483.1,473.6,461.4,407.5,394.2,385,360.2,342,345.7,351.6,345.9,333,330.4,336.4,340.2,330.4,329.7,330.4,345.9,417.4,513.2,514,486.1,438.7,411.1,378.6,367.2,372.5,340.3,366.3,369.1,350.2,359.6,346.9,378.8,410.8,412.4,437.3,466.9,476.8,452.3,446.7,495.2,527.8,563.4],[453.5,482.5,520.9,513.9,560.2,563,581.7,575.8,558.3,549.6,529.1,508.5,474.4,475.9,501.4,506.4,493.8,459.2,405,393.9,385.1,400.1,406,413.2,439.8,455.4,365.2,345.1,331,331.2,332.3,328.5,328.4,337.4,360.1,361.6,342.4,337.4,339.7,358.2,367.2,372.2,374.1,374.9,377.2,380.3,385.5,428.3,429.1,494.7,581.9,539.7,536.9,518.8,501.5,547.4,547.5,511.6,488.3,479.9],[561.4,586.4,480.7,575.3,600.6,605.8,599.7,576,551.6,560.8,557.8,545.3,535.4,527.3,456.3,458,500.2,490.1,451.5,379.2,373.3,378.6,396.5,417.3,438.2,486.9,511.1,509.6,471.1,371.9,336.1,328.8,329.6,330.3,331.7,335.5,351.5,371.1,372.4,371.7,376.5,418.7,418.5,467.1,480.1,485.9,502.8,527.1,592.2,600.4,602.8,623.1,597.9,546,511.2,469.6,483.2,492.4,475.1,458.9],[643,585.7,526.6,539,618.8,605.6,577.2,507.4,485.2,501.6,452.6,550.5,550.4,539.6,540.6,524.8,505.8,441.2,394.6,405.3,387.5,377.5,375.2,374.9,375.9,365.7,372,400.2,435.3,440.8,362.1,327,331.8,354.4,370.2,402.2,421.9,432.5,464.8,478.8,498.4,562.3,578.7,584.2,584.7,597,598,588.3,604,596.3,595.8,608.2,565.2,523,502.2,466.4,468.7,466.2,440.9,458.6],[598,624.7,636.4,642,537.2,493.6,469.8,458.5,461.1,448.8,442.2,469.3,428,445.3,442.5,407.6,401.5,397.3,420.6,419.9,395.2,384.9,386.9,373.2,369.5,365.8,363.2,362.7,363.3,365.1,356.6,332,351.8,364.8,493.8,505.5,508.8,498.1,532.4,560.9,540.5,521.9,571,580.3,547.5,579.9,591.1,597.2,599.9,596.7,553.8,578.6,577.9,522.9,473.1,440.9,483.2,425,431.6,474.9],[504.1,558.5,592.7,549.5,508.8,523,506.9,490.3,528.7,614.9,491.9,477.6,559.3,532.2,564.9,591.8,532,463.6,429.1,413.8,517.5,546.3,547.5,534.8,509.6,423.4,361.3,362,362.5,363.2,332.3,341.4,350.5,352.1,383.8,492.9,492.8,449.3,492.5,530.3,525.3,490.2,478.1,483.1,512.7,557,574.3,542.2,537.6,560.7,528.7,518.6,477.4,465.1,485.1,452.2,431.3,417.3,446.6,463.8],[662.5,661.9,649.9,629.8,618.6,535.6,509.8,534,528.6,532.6,553.8,540.5,513.3,551.6,585.8,573.8,581.8,621.9,607.1,596.8,586.2,583.6,575,566.5,561.3,442.5,362.2,342.3,331,348.1,331.4,346.4,354.6,356.1,357.1,362.2,420.2,484.2,459.6,449.4,486.3,467.1,457.6,477.9,520.3,547.5,513.6,497.5,498.9,489.2,454.2,433.7,438.5,437.3,407.4,413.2,445.5,480.7,489.7,490.8],[517.6,487.6,490.4,529.6,474.3,430.8,428.7,497.8,559.2,651.6,631.9,584.2,613.9,545.1,559.8,591,575.8,639,625.4,595.3,552.4,603,489.7,430.1,415.7,402.2,372.7,352.3,346.6,326.5,344.2,354.2,355.7,354.3,361.4,359.4,362,365,416.2,420.7,423.9,421.2,426.7,421.3,400.8,426.5,442.7,413.9,402.9,393.5,401.1,408.1,449.2,473.1,483.1,487.6,493.7,502.5,539.1,585.2]]},"frame":[2651010,1246499,2668002,1264998.2],"freqs":[["AD","123.555"],["GLD","119.830"],["ZURICH INFO","124.700"],["ZURICH TWR","118.100"]],"web":"https://birrfeld.ch"},"LSZG":{"name":"Grenchen","icao":"LSZG","elev":1411,"freq":"ATIS 121.105 · TWR 120.105","rwy":{"c":[2598379.4620000003,1225621.3546666666],"brg":66.5860604558136,"len":1000,"wid":23,"lo":"06","hi":"24","thr":{"24":0,"06":113}},"grass":{"off":-55,"len":700,"wid":30,"name":"06R/24L Gras"},"marks":[],"circuits":[{"id":"06i","land":"06","label":"06 · innen 2200 ft","alt":2200,"vol":"rechts · innen","name":"Innere Volte","s0":0,"tdp":263,"tdpName":"","pts":[[[2600110.8953333334,1226305.4613333333],"Querabflug",1],[[2600500.362,1225416.4613333333],"Gegenanflug",0],[[2598654.628666667,1224442.7946666668],"Queranflug",0],[[2598315.962,1223274.3946666666],"Queranflug",0],[[2597045.962,1223257.4613333333],"Queranflug",0],[[2596580.2953333333,1224104.128],"Queranflug",0],[[2596580.2953333333,1224781.4613333333],"Endanflug",1]],"hand":"R","side":"S","var":"inner"},{"id":"24i","land":"24","label":"24 · innen 2200 ft","alt":2200,"vol":"links · innen","name":"Innere Volte","s0":0,"tdp":150,"tdpName":"","pts":[[[2596580.2953333333,1224781.4613333333],"Querabflug",1],[[2596580.2953333333,1224104.128],"Querabflug",0],[[2597045.962,1223257.4613333333],"Querabflug",0],[[2598315.962,1223274.3946666666],"Querabflug",0],[[2598654.628666667,1224442.7946666668],"Gegenanflug",0],[[2600500.362,1225416.4613333333],"Queranflug",0],[[2600110.8953333334,1226305.4613333333],"Endanflug",1]],"hand":"L","side":"S","var":"inner"},{"id":"06a","land":"06","label":"06 · aussen 3000 ft","alt":3000,"vol":"rechts · aussen","name":"Äussere Volte","s0":0,"tdp":263,"tdpName":"","pts":[[[2599992.362,1226330.8613333334],"Querabflug",1],[[2603666.8953333334,1226026.0613333334],"Querabflug",0],[[2603776.962,1223934.7946666668],"Gegenanflug",0],[[2597045.962,1220971.4613333333],"Queranflug",0],[[2595606.628666667,1224231.128],"Queranflug",0],[[2596495.628666667,1224781.4613333333],"Endanflug",1]],"hand":"R","side":"S","var":"outer"},{"id":"24a","land":"24","label":"24 · aussen 3000 ft","alt":3000,"vol":"links · aussen","name":"Äussere Volte","s0":0,"tdp":150,"tdpName":"","pts":[[[2596495.628666667,1224781.4613333333],"Querabflug",1],[[2595606.628666667,1224231.128],"Querabflug",0],[[2597045.962,1220971.4613333333],"Gegenanflug",0],[[2603776.962,1223934.7946666668],"Queranflug",0],[[2603666.8953333334,1226026.0613333334],"Queranflug",0],[[2599992.362,1226330.8613333334],"Endanflug",1]],"hand":"L","side":"S","var":"outer"}],"rps":[["E1",[2603311.2953333333,1227135.1946666667]],["W1",[2593828.628666667,1222199.128]],["S",[2605639.628666667,1218643.128]],["E",[2612116.628666667,1228803.128]],["ABM Altreu",[2600839.0286666667,1226474.7946666668]],["HE · Heli",[2603175.8286666665,1228803.128]],["HW · Heli",[2594463.628666667,1224231.128]],["LSR83 · GND–4500",[2597003.628666667,1224273.4613333333]]],"places":[["Grenchen",[2595860.628666667,1228295.128],1],["Solothurn",[2604115.628666667,1229184.128],1],["Bettlach",[2598908.628666667,1229311.128],0],["Selzach",[2601321.628666667,1229565.128],0],["Lengnau",[2593193.628666667,1226390.128],0],["Pieterlen",[2591796.628666667,1225247.128],0],["Büren a. A.",[2594336.628666667,1221310.128],0],["Arch",[2598976.362,1223536.8613333334],0],["Leuzigen",[2601855.0286666667,1225458.7946666668],0],["Staad",[2596724.228666667,1223934.7946666668],0],["Rüti b. B.",[2597960.362,1222690.1946666667],0],["Lüsslingen",[2604496.628666667,1226517.128],0],["Biberist",[2608941.628666667,1225755.128],0],["Derendingen",[2608433.628666667,1227660.128],0],["Zuchwil",[2606147.628666667,1228676.128],0]],"peaks":[["Grenchenberg 4606 ft",[2595479.628666667,1231089.128]],["Romont 2461 ft",[2592685.628666667,1226339.328]]],"note":"Volten südlich der Piste: innen 2200 ft (max. 90 kt), aussen 3000 ft; Aufsetzpunkt 150 m nach der Schwelle","dem":{"e0":2591035,"e1":2616028,"n0":1217949,"dn":749.8,"rows":[[432.9,432.9,432.2,433.1,432.6,433.8,444.7,442.6,445,459.8,467.1,472.9,492.7,512.7,538.7,579.3,603.6,594.6,639.9,605.4,617.9,612.4,608.3,594.4,504,471.7,468.6,466.7,466.8,465.7,464.9,468.9,480.8,498.6,489.8,491.8,483.6,502.8,481.4,481.7,483.3,484.4,485,486.3,487.1,489.2,489.7,489.1,487.8,487.2,494.3,488.5,487.1,506.9,540.6,511.3,534.6,528.2,525.9,519.1],[432.2,432.1,431.9,431.9,431.2,439.7,444.2,452.8,450.5,456.1,451.7,469.3,497.1,497.5,503.6,514.6,548.4,570.2,570.7,575.2,571.6,571,598.7,609,618.5,643.9,580.7,526.8,489,475.4,469.9,466.3,464.7,463.8,465.2,467.7,468.7,493.6,493.8,478.1,479.3,480.3,481.9,481.9,482.8,485.5,486.5,484.5,483.9,483.3,481.9,484.1,485.7,485.6,513.1,497,537.9,547.5,535.7,509.8],[431.7,431.2,430.7,428.8,429.2,502.8,547.8,593.6,542.7,496.2,457.7,469.7,472.5,500.2,530.5,497.4,516.6,510.4,571.3,566.9,575.7,587,598.1,603.3,613,623.6,612.6,610.1,649.5,627.1,555.9,502.1,470.4,466.7,464.5,463.7,465.4,475.7,482.9,489.4,473.9,476.4,478.6,477.5,478.6,480.4,481.5,480.6,479.7,481.6,478.9,479.9,478.4,479.3,480.7,500.5,518.2,515.1,551.5,524.2],[431.1,431.1,431,430,429.4,429.6,435.8,492.5,542.6,499.1,517.8,476.8,488.9,490.2,488.9,486.4,504.8,515.5,530.7,541.2,550.8,582.6,600.8,605,600.5,617.1,600.9,590.1,599.4,616.2,645.7,590.8,518.9,489.5,468.7,462.8,465.1,467.9,470.7,472,471.6,471.2,474.1,474.2,475.3,475.7,476.6,476.5,475.9,484.8,475.2,474,481.6,489.2,496.8,501.3,541.2,559.1,573.6,576.9],[431.5,426.1,429.5,430.5,428.9,429.9,429.9,430.4,431.6,434.2,442.2,462.5,476.8,486.6,493,502.2,466.4,523.2,543.1,541.7,545.3,556.2,536.2,540.6,585.3,611.2,583.9,602.7,578.4,570.2,594.3,585.3,560.9,551.5,489.7,465.2,463.8,465.5,467.3,468,467.9,469.1,469.8,471.3,471.9,476.7,471.8,471.6,473,478.3,480.8,470.2,468.8,492.7,512.6,479.1,502.9,533.2,547.2,550.3],[431.1,430.8,430.5,428.4,429.2,430.6,430.1,430.2,430.1,426.7,430.4,429.8,432.3,436.9,446.3,462.9,461.4,513.2,525.2,512.3,535.6,552.9,563.6,562.1,522.6,515.6,535.8,572.5,560.1,564.9,544.1,542.2,530,524.7,509.5,494.6,461.9,463.7,465,464.4,464.7,464.6,465.8,466.7,468.3,467.7,468.1,467.6,468.8,468,466,461.7,464.8,465.6,474.8,460.9,469.1,461.5,468.4,489.7],[469.3,445.7,432.2,430.5,429.3,426.7,430.3,430,430.2,429.9,430,430,426.4,429.7,432.3,436.7,452.3,485.7,502.9,538.3,557.2,556.3,553.2,550.6,553.4,534.4,520.9,530.4,494.7,528.1,541,531.5,546,559.7,537.5,507.3,472.1,471.6,477.5,460.4,463,461.5,461.4,462,462.7,463.6,464.2,464.1,463.4,462.8,463.1,459.9,462,460.8,459.6,469.5,475.3,475.3,467.9,473.5],[559.5,546.9,520.9,511.6,454.3,444.3,430.7,426.7,430,429.6,429.3,429.6,429.1,426.4,429.1,430,430.2,437.3,463.5,524.4,519.3,546.9,537.7,558.6,558.5,572,550.8,552.6,547.3,558.8,540.2,497.4,483.4,477,485.6,490.2,484.5,465.3,474.5,488,463.6,456.4,456.2,456.8,459.1,457.8,459.5,460.6,460,459.4,458.9,458,457.7,466.2,468.6,485.4,487.9,491.8,484.9,467.6],[435,479.2,513.2,475,482.4,496.1,500,461.9,431.2,429.4,428.8,429.1,429.2,428.9,428.9,429.6,428.7,428.6,430.3,451.4,472.2,487.7,522.5,518.1,530.2,518.1,540.3,552.6,549.7,548.2,552.6,550.5,552.7,524.7,507,504.2,493.5,473.4,464.2,460.9,458,468.3,494.4,453.2,452.5,454.9,454.4,455.1,456.7,456.1,455.6,455.4,463.8,472.7,472.7,474,486.3,498.4,501.5,491.4],[455.8,438.3,438.8,433.2,433.4,433.4,437.7,430.7,430.6,429.7,429.1,429.2,428.9,428.4,428.6,428,428.1,428.5,428.9,426.4,428.3,432.4,441.8,451.5,476.5,462.9,477.3,502.8,531,531.9,547.5,533.5,543.1,552.4,540.1,546.5,546.2,527.7,489,479.9,469,460.6,457.8,451.8,450,449.5,449.8,453.5,452.4,452.2,452.3,462.3,462.7,476.8,483.1,486.4,488.5,494.2,493.5,485.7],[800.5,753.6,703.1,630.4,569.6,501,479.1,445.6,435.4,448.2,449.9,444.8,437.8,430.8,430.8,429.7,429,428.2,428.2,428.5,426.3,427.9,427.4,428.9,432.9,460.5,455.9,463.3,480,463.9,481.7,480.3,509.1,514.2,534.3,542.4,541.8,535.8,540.8,514.6,484.5,464.7,457.7,447,446.2,445.8,446,449.3,448.5,449.1,449.2,448.6,449,472.1,459.6,477.4,480.6,487.8,497.7,505.5],[808.3,820.4,826.8,786.8,748.9,684.8,614.1,590.4,547.1,478.2,476.6,446.5,452.3,438.1,436.5,434.3,433.6,432.2,431.2,430.2,430.2,428.6,428.5,426.1,428.2,428.2,428.6,429,448.3,484.4,475.9,457.9,461,464.4,495.6,499.6,513,522.1,521.7,522.6,509.5,490.6,462,449.3,443.2,439,442.5,445.1,445.7,445.7,445.7,445.6,443.8,442.6,455.1,459.4,462.8,471.5,481.5,487],[788.2,748.5,696.3,707.6,728.9,690.2,674.1,657.5,615.2,578.1,529.3,474.3,480.2,468.3,452.2,448.8,447.4,447.3,443.4,438.7,434.9,433,431.3,429.5,428.7,427.9,428.1,429.1,428.1,428.1,428.2,428,432.3,443.7,443.5,452.3,481.5,458.2,459.4,480.5,487.3,453.7,459.5,474.6,493,486.8,464.2,439,441,441.5,442.2,442.1,442.6,444,446.6,454.3,460.6,462.5,464.7,464.6],[1091.1,1095.6,1065.2,1017.2,1026.8,886.3,784.9,719.1,671.9,613.9,578.9,573.7,517.4,521,498.4,504.4,504.3,489.1,469.9,461.1,449.2,443.6,441.9,438.1,438.5,434.2,428.6,428.2,428.1,428.1,428.2,428,426.1,427.9,427.5,428.6,426.9,428.1,428.9,452.4,450.1,450.3,479.7,442.4,434.3,435.6,436,436.3,437.8,439,439.5,439.1,438.3,438.1,453.4,454.4,459.1,468.5,469.8,471.9],[972.4,1025.7,1070.4,1106.1,1182.4,1189.8,1162.2,1105.5,1002.8,950.7,850.7,767.9,672.8,663.8,610.2,591.1,595.1,574,539,500.7,474.5,469.2,479.7,476,468.1,458.2,439.1,428.7,427.4,427.5,429.7,427.6,428.2,429.3,429.1,429.1,428.8,429.9,433.1,428.6,426.1,426.1,430.8,430.3,431.2,433.2,431.8,433.2,434.4,435.7,435,435.8,434.6,434.3,457,457.2,458.5,466.4,468.4,472.8],[1185.4,1121.2,1085.2,1042.7,982.6,970.9,996.9,1058,1144.7,1177.8,1149.8,1119.8,1072.7,960.5,869.5,746.8,698.9,650.8,625.3,606.5,606.1,566.4,539.5,534.1,543.1,522.4,480.1,468.4,459.4,454.8,445.1,449.8,450.6,454.5,449.1,451.1,450.2,445.1,452.9,452.5,439.2,434.3,429.1,429.4,429.8,428.2,428.8,431.9,431.4,431.8,432,431.4,431.3,431.7,436.1,455.1,463.2,463.8,463.2,468.6],[1187,1183.5,1157.8,1164.5,1207.9,1232.3,1230.4,1214,1284.7,1212.6,1238.5,1282.7,1247.9,1199.8,1087.1,913,981.8,878.1,788.2,743.8,688.7,665.3,639.8,616.3,595,577.8,567,560.2,552.8,548.4,532.5,527.8,479.6,517.2,497,484.8,493.8,486.9,505.9,494.6,457.9,454.7,452.5,451,447.4,426,428,428,428.2,427.7,427.7,428,424.3,424.1,426.6,423.4,432.8,442,425.3,432.6],[979.6,1041.6,1025.9,1041.9,1104.5,1174.7,1173,1230.1,1218.4,1281.2,1328.8,1306.1,1300.4,1357.7,1166.2,1142.4,1155.5,1236.7,1002.2,1016.4,926.1,831.1,722.4,712.2,679.2,657.2,617,599.7,592,591.3,566.9,560.7,562.1,546.9,535.8,519.1,505.5,509.6,509.6,567,537,480.3,467.7,462.3,460.5,466.7,442.7,426,426,426.6,425,425,422.2,425.2,421.5,422.3,421.2,421.3,420.1,421.8],[740.1,744.6,714.1,735.5,771.4,846.8,924.2,963.1,1000.4,1021.1,1064,1120.6,1171.5,1274.4,1365.5,1327.5,1363.6,1242.3,1167.9,1243.1,1149.9,1065.9,1025.2,946.1,924.2,806.6,740.7,694.9,674.2,661,638,636.4,624.7,611.6,595.7,583.9,573,557.5,526.3,534.7,574.3,549.7,525.8,515.4,505.5,512,493.8,465.7,462.1,447.7,424.9,428.4,425.6,421.7,420.5,417.3,421.8,420.6,420.6,419.7]]},"frame":[2591035,1217949,2616028,1231445.4],"freqs":[["ATIS","121.105"],["TWR","120.105"],["TWR ALTN","119.700"],["GND","121.805"],["GLD","127.580"],["BERN APP","127.325"],["BALE INFO","130.905"]],"web":"https://www.airport-grenchen.ch"},"LSPN":{"name":"Triengen","icao":"LSPN","elev":1594,"freq":"AD 124.530 · ZURICH INFO 124.700","rwy":{"c":[2648484.368,1230743.1093333333],"brg":147.95911205313806,"len":570,"wid":15,"lo":"15","hi":"33","thr":{"15":65,"33":110}},"marks":[],"circuits":[{"id":"15","land":"15","label":"Piste 15 · West 2300 ft","alt":2300,"vol":"rechts · West","s0":0,"tdp":125,"tdpName":"","pts":[[[2648969.9313333333,1229989.576],"Startlauf",0],[[2648902.198,1228973.576],"Querabflug",0],[[2647987.798,1228550.2426666666],"Gegenanflug",0],[[2647809.998,1228694.176],"Gegenanflug",0],[[2646641.598,1231090.2426666666],"Gegenanflug",0],[[2646785.5313333333,1232360.2426666666],"Queranflug",0],[[2647276.598,1232715.8426666667],"Queranflug",0],[[2647818.4646666665,1232106.2426666666],"Endanflug",1]],"name":null,"hand":"R","side":"W","var":null},{"id":"33","land":"33","label":"Piste 33 · West 2300 ft","alt":2300,"vol":"links · West","s0":0,"tdp":170,"tdpName":"","pts":[[[2647276.598,1232715.8426666667],"Querabflug",0],[[2646785.5313333333,1232360.2426666666],"Gegenanflug",0],[[2646641.598,1231090.2426666666],"Gegenanflug",0],[[2647809.998,1228694.176],"Queranflug",0],[[2647987.798,1228550.2426666666],"Queranflug",0],[[2648902.198,1228973.576],"Endanflug",0],[[2648969.9313333333,1229989.576],"Endanflug",0]],"name":null,"hand":"L","side":"W","var":null}],"rps":[["Fallschirm-Absprungzone",[2648182.5313333333,1230649.976]]],"places":[["Triengen",[2648267.198,1232427.976],1],["Winikon",[2646362.198,1232715.8426666667],0],["Wilihof",[2647310.4646666665,1230599.176],0],["Büron",[2650002.864666667,1229396.9093333334],0],["Knutwil",[2648546.598,1227881.376],0],["Schlierbach",[2651526.864666667,1230412.9093333334],0],["Etzelwil",[2651272.864666667,1231809.9093333334],0],["Kulmerau",[2650002.864666667,1234222.9093333334],0],["Geuensee",[2651780.864666667,1227669.7093333334],0],["Buchs",[2644414.864666667,1227999.9093333334],0],["Uffikon",[2644287.864666667,1229828.7093333334],0],["Reitnau",[2644668.864666667,1233079.9093333334],0],["Sursee",[2651780.864666667,1225586.9093333334],1]],"peaks":[["Stereberg 2861 ft",[2654701.864666667,1232063.9093333334]],["2789 ft",[2650637.864666667,1233257.7093333334]],["2523 ft",[2644033.864666667,1230717.7093333334]]],"note":"Volte westlich der Piste, 2300 ft; Aufsetzpunkt 60 m nach der Schwelle","dem":{"e0":2643009,"e1":2655007,"n0":1224994,"dn":750.4,"rows":[[501.2,498.6,497.6,497.5,496.8,496.5,497.7,498,499.1,499.4,499.5,501.6,502.9,503.8,507.8,511.4,510.2,506.2,503.5,503.3,504.7,507.5,511.6,512.9,507.7,504.3,503.3,503.3,505,505.7,515.6,518.2,511.3,510.2,499.5,498.1,498.2,498.5,497.4,505.5,505.4,504.8,509.9,515.8,504.6,504.5,511.6,510.8,516.1,520.9,537.1,566,595.2,636.5,654.3,662.1,674,686,696.8,713.6],[515.5,499.5,498.1,497.9,497.9,498.1,498.3,498.1,499,499.5,500.4,501.6,501.4,502.5,503.5,504.9,506.2,507.8,509.1,511.7,521.6,517.4,515.4,515.7,516,519.3,518.1,513.4,509.2,510.6,508.6,504.6,500.9,492.1,494,494.1,494.6,494.1,496.1,496.5,504.4,500.1,502.9,506.3,510.3,513.9,531,533.3,549.1,553.6,615.5,627.9,626.7,641.3,651.3,667.9,682.6,698.9,710.4,734.8],[616.1,620,619.8,608.3,613.7,605.9,584.1,567.8,564.1,557.3,557,558.6,564.1,568.9,577.9,607.9,602,590.3,600.8,601.2,587.4,580.8,580.7,574.5,571.1,562.1,552.3,519.6,506.9,507.2,505.1,490.6,490.6,491.1,491.5,491.4,491.5,492.8,493.5,495.1,497.4,500.1,502.5,510.5,530.6,564.7,602.1,606.4,630.4,647.5,666.9,681.5,656.8,656.3,648.1,646.2,664.2,696.2,711.5,719.1],[682.9,680,676.4,677.8,667.5,646.9,670.2,664.8,643.6,608,579.4,548.3,538.6,532.5,522.1,519.6,514.5,514.4,536.3,540.9,539.5,549.4,563.6,562.6,555.4,550.8,551,524.9,498.8,489.8,487.8,488.8,487.9,488.6,489.4,490,491,492.8,493.4,497.1,509.3,528.4,574.6,588.9,587,630.2,663.9,698.8,729.7,745.9,767,780.4,743.3,718.8,687.1,685.4,691.6,693.2,691.1,691.4],[545.4,548.5,544.5,538.3,536.5,544.8,548.5,529,504.9,504.4,508,504.7,502,506.3,507.8,508.5,506,509.4,516.9,561.3,572.5,571.1,567.9,560.4,554.2,535.5,505.5,491.4,488.7,486.3,486.3,486.3,486.5,487.3,488.4,491.7,496.2,506.4,525.8,538.7,569.2,595.3,622.3,655.3,705.7,721.8,737.9,758,780.7,795,808.1,833.5,825.1,797,767.5,732.9,724.1,695.3,688.5,686.2],[501.7,498.4,498.7,501.2,502.9,503,501.2,500.2,500.6,504.8,507.7,514.7,520.2,522.3,529.4,551.5,593.8,608.6,617.8,604.8,599.8,596.8,575.9,531.9,496,491,488.6,486.3,486.2,486.6,488.9,488,488.4,489.2,496.3,526.8,563.5,576,592.6,605.2,612.8,628.7,669.8,676.5,686.5,707,717.8,736.5,751.1,779.9,814.2,794.7,762.1,733.8,734.5,726.7,704.7,693.4,684.2,681.2],[656.9,644.4,632.3,587.8,585.7,572.9,610.5,597.9,609.8,612.4,622.1,636.8,649.2,660.7,667.4,658.4,665.3,643.1,626.3,621.7,580,541.1,545.1,512.4,491.5,485.5,485.3,484.9,485,485.7,488.9,493.7,502.5,519.1,540.1,565.7,577.5,602.3,629.9,661,689.7,698.8,702.4,698.3,712.2,718.4,724.6,729.8,733.5,769.4,811.7,810.1,759.4,715.9,706.3,699.2,698.7,700.4,700.9,716.1],[689.2,713.5,723.2,731.8,696.6,706.7,695.8,700.1,688.8,679.2,701.6,691.6,676.3,676,680.3,690.6,683.4,655.8,636.1,594.6,557.9,512.2,513.6,499,489.8,484,485.2,484.7,485.1,488.3,505.3,531.6,554.6,574.8,590.5,604.4,642.9,650.5,662.5,686.5,698.1,689.8,709.2,708.6,706.2,710.8,727.9,730.3,712,734.3,789.4,781.4,738,698.3,684.4,682.3,677.8,665.6,660.7,667.1],[564,636.7,570.8,605,613.6,611.4,664.6,648.1,687,724.3,707.7,689.1,676.6,655.4,669,625.9,603.5,577.8,545.2,539.8,506.2,510.3,505.2,492.2,486.3,483.6,484.9,488.6,503,525.5,567.2,614.8,661.1,695.9,722.6,749.8,759.9,752.9,736.2,714.2,705.5,702.3,704.1,732.1,773.4,785.3,771.5,725,694,701,743.7,691.5,682.6,668.9,673.3,679.9,682.2,684.3,686.1,678.2],[702.6,687.1,695.7,679,667.4,650.6,674,695.2,723.7,739.2,727.1,701.5,679,630.7,588.6,557.2,544.3,519.9,499.4,499.2,507,498.4,495.1,486.5,496,501.1,518.7,521,536.1,580.2,637.8,683.1,704,725.9,774,800.8,814.9,804.2,793.6,770.9,768.2,766.3,749.6,743.8,756.7,768.5,757.7,745,706.6,674.9,656.1,693.8,741.8,784,799.5,803.7,806.7,814.8,802.7,772.9],[681.3,682,660.9,608.7,674.8,660.5,627.5,634.8,679.2,681,660.2,651.3,611.7,572.8,558.6,540.8,498.1,494.5,492.2,490.3,488.3,486.8,487.4,497.8,500.2,505,549.9,587.6,612.7,660.1,692,716.2,728.7,744.5,765.6,802.2,817.4,814.1,819.3,814.2,798.8,782.9,770.8,759.2,737.4,748.7,746.1,722.9,677.7,639.5,665,717.4,759.4,776.3,829.4,862.8,863,846,820.9,768.9],[647.2,654.5,649.6,598.2,606.4,631.7,654.4,671.8,663.7,634.5,638.3,600.1,571,553.7,543.6,499.3,491.1,485.4,482,481.3,477.6,479.9,489.7,497,522.5,567.4,585.7,612.2,642.8,647.1,671.3,700.4,724.9,762.2,780.4,777.7,812.3,809.3,779.2,745,724.6,710.6,691.2,682.1,676.7,689.6,694,647.6,625,662.5,712.9,754.7,723.3,740.4,734.7,731.6,727.8,708.6,699.6,658.1],[654.1,659.5,643.6,611,566.1,590.8,612.3,642.7,653.5,620.6,615.8,573.9,544.5,538.2,488.5,482,481.3,476.5,475.3,475.8,477.8,482.3,495.7,541.6,572.3,599.8,616.6,658.1,625.2,612.7,616.9,635.7,662.2,695.2,715.6,747.8,734,714.5,682.1,652.5,647.5,654.6,640.9,642.9,665.8,703.9,707.2,701.9,650.2,607.6,643.7,630.4,644.8,657.6,662.6,660.1,628.7,605.2,591.2,567.4],[558.5,575.1,551.3,558.5,564.6,600.3,647.7,675.2,670,653,616.6,607.2,564.5,513.3,483.1,480,476.8,478.2,473.8,474.4,478,500.1,536.7,571.8,590.4,641.6,651.2,634.2,635.4,652.9,679.6,707.8,706.4,692.5,693,681.2,647,614.8,598.1,615,631.6,666.8,691.8,714.7,715,706,660,642.9,622.8,601.5,574.2,587.5,578.2,577,563.9,565.5,544.7,531.6,520.7,513.5],[534.2,577.2,638.1,649.3,652.5,656.1,663.4,675.3,674.4,622.9,591.1,564.6,539.7,525.7,479.9,472.6,472.9,474.5,477.9,482.9,490.8,509,522.4,574.1,617.2,634.6,614.5,664.5,688.4,689.1,682.7,669.1,686.3,661.9,644.2,613.4,588.1,587.6,631,644.5,650.7,661.5,679,686.4,683.6,647.9,617.5,616.3,607.8,599.8,586.7,580.5,543.1,546,537.2,524,514.2,517,509.7,510.3],[539.4,607.3,626.3,580,570.1,631.4,644.8,653.4,660.1,623.8,645,580.5,565,505.1,501.9,473,475.1,490.4,495.6,509.8,518.5,506.3,507.1,512.5,518.9,552.6,611,656.5,665.5,667.9,662.9,644.9,586.9,615.2,603.3,602.1,610.7,622.8,582.3,569.2,626,612.9,661.2,679.8,675.6,666,636.5,575.2,554.9,574.9,548.4,520.8,530.8,507.1,507.4,507.6,507.8,507.6,510.3,525.1],[498.9,550.3,550,530,507.8,531.9,544,576.6,614.6,595.2,577.3,527.3,539.5,487.3,470.2,477,475.6,475.9,479.3,492.4,512.5,528.7,538.6,576.6,626.8,646.8,620.2,578.6,594.2,624.9,632.9,580.2,546.9,525,567.6,560.7,519.2,553.7,596.6,592,646.8,626.9,635.3,617.5,596.1,590.6,570.4,531.3,514.2,508.5,508.4,507.5,513.1,505.7,505.9,516.6,534.2,558.9,585.2,605.1]]},"frame":[2643009,1224994,2655007,1237000.4],"freqs":[["AD","124.530"],["ZURICH INFO","124.700"],["ZURICH TERMINAL","127.755"]],"web":"https://lspn.ch"},"LSZU":{"name":"Buttwil","icao":"LSZU","elev":2372,"freq":"AD 122.155 · ZURICH INFO 124.700","rwy":{"c":[2665366.6458048276,1235208.9958261042],"brg":158,"len":675,"wid":30,"lo":"16","hi":"34","thr":{"16":0,"34":0}},"marks":[],"rps":[],"places":[["Buttwil",[2665789.979138161,1236208.0624927708],1],["Müswangen",[2664680.8458048278,1231805.395826104],0],["Geltwil",[2667170.045804828,1234006.7291594374],0],["Brunnwil",[2666535.045804828,1231678.395826104],0]],"peaks":[],"note":"Beide Volten werden parallel benützt, in der Regel Piste 34 (16 nur bei Föhn); Aufsetzpunkt 100 m nach der Schwelle","dem":null,"frame":[2659999,1229003,2671996,1241000],"circuits":[{"id":"34w","land":"34","alt":3300,"pts":[[[2664532.268168022,1237274.1529457541],"Querabflug",1],[[2663915.3012303556,1237175.82487569],"Querabflug",0],[[2664213.8686074675,1234689.2152790609],"Gegenanflug",0],[[2665130.8858890627,1232307.0438253374],"Queranflug",0],[[2666373.0251984536,1232718.1194193822],"Endanflug",1]],"s0":0,"tdp":100,"tdpName":"","vol":"links · West","label":"34 · West 3300 ft","name":"West-Volte","hand":"L","side":"W","var":null},{"id":"34e","land":"34","alt":3300,"pts":[[[2664318.032543702,1237804.4047230436],"Querabflug",1],[[2665646.7252729554,1238142.1482977592],"Gegenanflug",0],[[2667141.515210352,1234245.9564849252],"Queranflug",0],[[2665938.7652824456,1233792.9504284638],"Endanflug",1]],"s0":0,"tdp":100,"tdpName":"","vol":"rechts · Ost","label":"34 · Ost 3300 ft","name":"Ost-Volte","hand":"R","side":"E","var":null},{"id":"16w","land":"16","alt":3300,"pts":[[[2666373.0251984536,1232718.1194193822],"Querabflug",1],[[2665130.8858890627,1232307.0438253374],"Gegenanflug",0],[[2664213.8686074675,1234689.2152790609],"Queranflug",0],[[2663915.3012303556,1237175.82487569],"Queranflug",0],[[2664532.268168022,1237274.1529457541],"Endanflug",1]],"s0":0,"tdp":100,"tdpName":"","vol":"rechts · West","label":"16 · West 3300 ft","name":"West-Volte","hand":"R","side":"W","var":null},{"id":"16e","land":"16","alt":3300,"pts":[[[2665938.7652824456,1233792.9504284638],"Querabflug",1],[[2667141.515210352,1234245.9564849252],"Gegenanflug",0],[[2665646.7252729554,1238142.1482977592],"Queranflug",0],[[2664318.032543702,1237804.4047230436],"Endanflug",1]],"s0":0,"tdp":100,"tdpName":"","vol":"links · Ost","label":"16 · Ost 3300 ft","name":"Ost-Volte","hand":"L","side":"E","var":null}],"freqs":[["AD","122.155"],["ZURICH INFO","124.700"],["ZURICH TERMINAL","127.755"]],"web":"https://sgzuerich.ch/flugplatz/"},"LSGE":{"name":"Ecuvillens","icao":"LSGE","elev":2293,"freq":"AD 120.630","rwy":{"c":[2572274.1874767477,1178297.465172795],"brg":95.28003889211273,"len":800,"wid":23,"lo":"09","hi":"27","thr":{"27":0,"09":0}},"marks":[],"rps":[],"places":[["Ecuvillens",[2572733.7321883496,1178866.736662866],1],["Neyruz",[2572141.0655216826,1179467.8699961994],0],["Posieux",[2574173.0655216826,1179467.8699961994],0],["Corpataux",[2574088.398855016,1177520.5366628661],0],["Magnedens",[2572733.7321883496,1176419.8699961994],0],["Posat",[2571209.7321883496,1176165.8699961994],0]],"peaks":[],"note":"Piste 09 mit Volte nördlich, Piste 27 mit Volte südlich, je 3300 ft; Aufsetzpunkt 150 m nach der Schwelle","dem":null,"frame":[2567002,1172999,2578999,1185005],"circuits":[{"id":"09-3300","land":"09","alt":3300,"pts":[[[2574670.064455611,1178076.0482339212],"Querabflug",1],[[2575019.7321883496,1180822.5366628661],"Gegenanflug",0],[[2569973.8948375056,1180542.8919947266],"Queranflug",0],[[2569798.6115644313,1178526.2475540654],"Endanflug",1]],"s0":0,"tdp":150,"tdpName":"","vol":"links · Nord","label":"09 · Nord 3300 ft","name":"Nord-Volte","hand":"L","side":"N","var":null},{"id":"27-3300","land":"27","alt":3300,"pts":[[[2569995.12543559,1178508.0865632542],"Querabflug",1],[[2569910.015637704,1176832.3771182608],"Gegenanflug",0],[[2574821.7819527206,1175882.10556167],"Queranflug",0],[[2574918.2973320168,1178053.10758876],"Endanflug",1]],"s0":0,"tdp":150,"tdpName":"","vol":"links · Süd","label":"27 · Süd 3300 ft","name":"Süd-Volte","hand":"L","side":"S","var":null}],"freqs":[["AD","120.630"]],"web":"https://lsge.ch"},"LSGC":{"name":"Les Eplatures","icao":"LSGC","elev":3368,"freq":"TWR 118.130 · LSR4 128.680","rwy":{"c":[2550977.0622506104,1214973.5728149991],"brg":54.892841509550145,"len":1127,"wid":27,"lo":"05","hi":"23","thr":{"23":100,"05":70}},"marks":[],"rps":[["NE",[2554189.997955731,1220778.346921027]],["SE",[2558203.197955731,1216858.2802543603]],["SW",[2546172.0646223975,1208747.2135876936]],["V",[2558203.197955731,1212997.4802543605]]],"places":[["La Chaux-de-Fonds",[2552115.6646223976,1216942.946921027],1],["Le Locle",[2546764.731289064,1212845.0802543603],1],["La Sagne",[2551370.5979557307,1210322.0135876937],0],["Les Brenets",[2544241.6646223976,1214479.146921027],0],["Les Ponts-de-Martel",[2547061.0646223975,1205927.8135876937],0]],"peaks":[],"note":"Volte südöstlich der Piste, 4200 ft; Gebirgsflugplatz; Aufsetzpunkt 100 m nach der Schwelle","dem":null,"frame":[2542023,1205471,2560024,1223970],"circuits":[{"id":"05-4200","land":"05","alt":4200,"pts":[[[2552778.412466386,1216239.9192063827],"Querabflug",1],[[2553864.3812417905,1214626.4740493733],"Gegenanflug",0],[[2550206.281910303,1212165.662927503],"Queranflug",0],[[2549171.1540728,1213704.0221834157],"Endanflug",1]],"s0":0,"tdp":170,"tdpName":"","vol":"rechts · Südost","label":"05 · Südost 4200 ft","name":"Südost-Volte","hand":"R","side":"SE","var":null},{"id":"23-4200","land":"23","alt":4200,"pts":[[[2549171.1540728,1213704.0221834157],"Querabflug",1],[[2550206.281910303,1212165.662927503],"Gegenanflug",0],[[2553864.3812417905,1214626.4740493733],"Queranflug",0],[[2552778.412466386,1216239.9192063827],"Endanflug",1]],"s0":0,"tdp":200,"tdpName":"","vol":"links · Südost","label":"23 · Südost 4200 ft","name":"Südost-Volte","hand":"L","side":"SE","var":null}],"freqs":[["TWR","118.130"],["LSR4","128.680"]],"web":"https://leseplaturesairport.ch"},"LSZI":{"name":"Fricktal-Schupfart","icao":"LSZI","elev":1788,"freq":"AD 119.555 · ZURICH INFO 124.700","rwy":{"c":[2638516.6145315785,1262155.9347430232],"brg":74,"len":530,"wid":30,"lo":"07","hi":"25","thr":{"25":0,"07":0}},"marks":[],"rps":[["N",[2639456.414531579,1266685.60140969]],["S",[2638863.747864912,1257948.00140969]]],"places":[["Schupfart",[2639752.747864912,1263129.60140969],1],["Wegenstetten",[2636645.481198245,1260166.2680763565],0],["Hellikon",[2636349.147864912,1262689.3347430232],0],["Eiken",[2641386.8145315787,1264467.3347430232],0],["Obermumpf",[2636493.0811982453,1265060.00140969],0],["Wittnau",[2640641.747864912,1258837.00140969],0],["Gipf-Oberfrick",[2642123.414531579,1261351.60140969],0],["Zuzgen",[2634715.0811982453,1263874.6680763566],0]],"peaks":[],"note":"Piste 07 mit Volte nördlich, Piste 25 mit Volte südlich, je 3000 ft; Aufsetzpunkt 80 m nach der Schwelle","dem":null,"frame":[2633005,1256009,2645002,1268006],"circuits":[{"id":"07-3000","land":"07","alt":3000,"pts":[[[2640853.414531579,1262647.00140969],"Querabflug",1],[[2641065.0811982453,1263917.00140969],"Gegenanflug",0],[[2635646.414531579,1262985.6680763566],"Queranflug",0],[[2635858.0811982453,1261419.3347430232],"Endanflug",1]],"s0":0,"tdp":80,"tdpName":"","vol":"links · Nord","label":"07 · Nord 3000 ft","name":"Nord-Volte","hand":"L","side":"N","var":null},{"id":"25-3000","land":"25","alt":3000,"pts":[[[2635426.837233111,1261269.9553596668],"Querabflug",1],[[2635949.802407101,1259194.7189077926],"Gegenanflug",0],[[2641729.67679528,1260919.4353468842],"Queranflug",0],[[2641197.6857519094,1262924.7195443425],"Endanflug",1]],"s0":0,"tdp":80,"tdpName":"","vol":"links · Süd","label":"25 · Süd 3000 ft","name":"Süd-Volte","hand":"L","side":"S","var":null}],"freqs":[["AD","119.555"],["ZURICH INFO","124.700"]],"web":"https://www.aecs-fricktal.ch"},"LSPL":{"name":"Langenthal","icao":"LSPL","elev":1575,"freq":"AD 119.405 · BALE INFO 130.905","rwy":{"c":[2622918.565273933,1225793.9419758576],"brg":52.098627950243525,"len":585,"wid":18,"lo":"05","hi":"23","thr":{"23":0,"05":0}},"marks":[],"rps":[["N",[2622079.498710602,1228602.6568407374]],["S",[2623264.832043935,1222828.3901740708]]],"places":[["Langenthal",[2626676.898710602,1229347.723507404],1],["Lotzwil",[2626820.832043935,1226680.723507404],0],["Thunstetten",[2623857.498710602,1228162.3901740708],0],["Herzogenbuchsee",[2619861.2320439355,1227273.3901740708],1],["Bleienbach",[2624602.5653772685,1225935.6568407374],0],["Thörigen",[2621935.5653772685,1224902.723507404],0],["Rütschelen",[2625339.1653772686,1224310.0568407376],0]],"peaks":[],"note":"Piste 05 mit Volte südöstlich (2500 ft), Piste 23 mit Volte nordwestlich (2400 ft); Aufsetzpunkt 80 m nach der Schwelle","dem":null,"frame":[2617999,1220001,2629996,1232006],"circuits":[{"id":"05-2500","land":"05","alt":2500,"pts":[[[2624765.95881558,1227232.1696605375],"Querabflug",1],[[2625581.825958353,1226507.6037270664],"Gegenanflug",0],[[2622375.832043935,1223310.990174071],"Queranflug",0],[[2621698.498710602,1223632.723507404],"Queranflug",0],[[2621578.587206576,1224750.7459757142],"Endanflug",1]],"s0":0,"tdp":80,"tdpName":"","vol":"rechts · Südost","label":"05 · Südost 2500 ft","name":"Südost-Volte","hand":"R","side":"SE","var":null},{"id":"23-2400","land":"23","alt":2400,"pts":[[[2621529.1653772686,1225072.0568407376],"Querabflug",1],[[2621317.498710602,1225537.723507404],"Gegenanflug",0],[[2625236.0001590163,1227710.8214384096],"Queranflug",0],[[2625593.1653772686,1227231.0568407376],"Queranflug",0],[[2625000.498710602,1227358.0568407376],"Endanflug",1]],"s0":0,"tdp":80,"tdpName":"","vol":"rechts · Nordwest","label":"23 · Nordwest 2400 ft","name":"Nordwest-Volte","hand":"R","side":"NW","var":null}],"freqs":[["AD","119.405"],["BALE INFO","130.905"],["BALE INFO","134.680"]],"web":"https://www.lspl.ch"},"LSGL":{"name":"Lausanne-Blécherette","icao":"LSGL","elev":2041,"freq":"AD 123.205 · APCH INFO 118.830","rwy":{"c":[2536954.706928255,1155225.2416893987],"brg":184.77885270525695,"len":875,"wid":23,"lo":"18","hi":"36","thr":{"18":0,"36":0}},"marks":[],"rps":[["N",[2536654.4295616373,1161687.1572318706]],["S",[2536502.0295616374,1149512.090565204]]],"places":[["Lausanne",[2536950.762894971,1151442.490565204],1],["Renens",[2533835.0295616374,1154117.9572318706],1],["Prilly",[2536654.4295616373,1153821.6238985374],0],["Romanel",[2536061.762894971,1157386.090565204],0],["Cheseaux",[2536205.696228304,1159909.1572318706],0],["Epalinges",[2541404.2295616376,1156793.4238985372],0],["Le Mont",[2538728.762894971,1157233.690565204],0]],"peaks":[],"note":"Volte westlich der Piste, 2700 ft; Gegenanflug-Verkehr hat Vorrang; Aufsetzpunkt 120 m nach der Schwelle","dem":null,"frame":[2529001,1145998,2547001,1164498],"circuits":[{"id":"36-2700","land":"36","alt":2700,"pts":[[[2537028.670787901,1156109.9698132745],"Querabflug",1],[[2534700.228879489,1156647.122936735],"Gegenanflug",0],[[2534525.73436325,1153210.0909257932],"Queranflug",0],[[2536768.3442252004,1152996.0404900168],"Endanflug",1]],"s0":0,"tdp":120,"tdpName":"","vol":"links · West","label":"36 · West 2700 ft","name":"West-Volte","hand":"L","side":"W","var":null},{"id":"18-2700","land":"18","alt":2700,"pts":[[[2536768.323743615,1152995.7954969238],"Querabflug",1],[[2534732.4545200346,1153189.9197844476],"Gegenanflug",0],[[2534748.3060704605,1157888.495183807],"Queranflug",0],[[2537157.903136991,1157655.7990101515],"Endanflug",1]],"s0":0,"tdp":120,"tdpName":"","vol":"rechts · West","label":"18 · West 2700 ft","name":"West-Volte","hand":"R","side":"W","var":null}],"freqs":[["AD","123.205"],["APCH INFO","118.830"],["GENEVA INFO","126.350"]],"web":"https://www.lausanne-airport.ch"},"LSZL":{"name":"Locarno","icao":"LSZL","elev":650,"freq":"ATIS 133.455 · TWR/AD 134.825","rwy":{"c":[2711157.5200505406,1113666.041693898],"brg":78.06027115990169,"len":804,"wid":23,"lo":"08L","hi":"26R","thr":{"08L":131,"26R":52}},"marks":[],"rps":[["W",[2704327.287931519,1110487.8105558935]],["E",[2719025.4212648524,1112121.87722256]]],"places":[["Locarno",[2703878.5545981857,1115390.0105558934],1],["Tenero",[2708780.7545981854,1115686.3438892267],0],["Gordola",[2709525.8212648523,1116719.27722256],0],["Magadino",[2710711.154598186,1111232.87722256],0],["Cugnasco",[2716798.687931519,1114797.3438892267],0],["S. Antonino",[2718881.487931519,1112866.9438892268],0],["Cadenazzo",[2717247.4212648524,1112121.87722256],0]],"peaks":[],"note":"Pisten 08/26: Einziehfahrwerk 3000 ft, festes Fahrwerk 2000 ft (Weg schematisch gleich); parallele Pisten und Volten beachten; Aufsetzpunkt 100 m nach der Schwelle","dem":null,"frame":[2702998,1104002,2720998,1122502],"circuits":[{"id":"26r","land":"26R","alt":3000,"pts":[[[2706604.8212648523,1112739.9438892268],"Querabflug",1],[[2707282.154598186,1112062.6105558933],"Gegenanflug",0],[[2715546.720564131,1112165.1960117812],"Queranflug",0],[[2716248.5764689087,1112982.4946436114],"Queranflug",0],[[2715793.882285261,1114646.4345672987],"Endanflug",1]],"s0":0,"tdp":152,"tdpName":"","vol":"links · Süd","label":"26R · Süd 3000 ft · Einziehfahrwerk","name":"Einziehfahrwerk","hand":"L","side":"S","var":"retract"},{"id":"26f","land":"26R","alt":2000,"pts":[[[2706604.8212648523,1112739.9438892268],"Querabflug",1],[[2707282.154598186,1112062.6105558933],"Gegenanflug",0],[[2715546.720564131,1112165.1960117812],"Queranflug",0],[[2716248.5764689087,1112982.4946436114],"Queranflug",0],[[2715793.882285261,1114646.4345672987],"Endanflug",1]],"s0":0,"tdp":152,"tdpName":"","vol":"links · Süd","label":"26R · Süd 2000 ft · festes Fahrwerk","name":"festes Fahrwerk","hand":"L","side":"S","var":"fixed"},{"id":"08r","land":"08L","alt":3000,"pts":[[[2714902.154598186,1114433.27722256],"Querabflug",1],[[2715240.8212648523,1114898.9438892268],"Gegenanflug",0],[[2706774.154598186,1114898.9438892268],"Queranflug",0],[[2706308.487931519,1113713.6105558933],"Queranflug",0],[[2707259.8245200003,1112841.8453245524],"Endanflug",1]],"s0":0,"tdp":231,"tdpName":"","vol":"links · Nord","label":"08L · Nord 3000 ft · Einziehfahrwerk","name":"Einziehfahrwerk","hand":"L","side":"N","var":"retract"},{"id":"08f","land":"08L","alt":2000,"pts":[[[2714902.154598186,1114433.27722256],"Querabflug",1],[[2715240.8212648523,1114898.9438892268],"Gegenanflug",0],[[2706774.154598186,1114898.9438892268],"Queranflug",0],[[2706308.487931519,1113713.6105558933],"Queranflug",0],[[2707259.8245200003,1112841.8453245524],"Endanflug",1]],"s0":0,"tdp":231,"tdpName":"","vol":"links · Nord","label":"08L · Nord 2000 ft · festes Fahrwerk","name":"festes Fahrwerk","hand":"L","side":"N","var":"fixed"}],"freqs":[["ATIS","133.455"],["TWR/AD","134.825"],["TWR ALTN","119.700"],["GND","121.705"],["ALPS RADAR","119.225"],["MILANO INFO","135.075"],["TMZ MONITOR","126.750"]],"web":"https://www4.ti.ch/dt/sg/sai/udac/temi/airport/airport"},"LSZT":{"name":"Lommis","icao":"LSZT","elev":1539,"freq":"AD 119.305 · ZURICH INFO 124.700","rwy":{"c":[2717851.552898167,1264942.217041509],"brg":62.370531213642145,"len":550,"wid":29,"lo":"06","hi":"24","thr":{"24":0,"06":64}},"marks":[],"rps":[["W",[2712711.5041757603,1263201.285600402]],["N",[2717308.90417576,1268679.2189337353]]],"places":[["Lommis",[2717308.90417576,1263345.2189337353],1],["Wängi",[2713752.90417576,1262015.9522670687],0],["Matzingen",[2713160.2375090932,1265123.2189337353],0],["Affeltrangen",[2720864.90417576,1265419.5522670685],0],["Tobel",[2721008.8375090933,1263937.885600402],0],["Münchwilen",[2717308.90417576,1259941.6189337352],0],["Bettwiesen",[2720119.8375090933,1261719.6189337352],0]],"peaks":[],"note":"Volte südlich der Piste: festes Fahrwerk 2300 ft (①), Einziehfahrwerk 2600 ft (②); Anflug immer via Überflug zum Gegenanflug; Aufsetzpunkt 80 m nach der Schwelle","dem":null,"frame":[2711001,1258003,2722999,1270008],"circuits":[{"id":"24f","land":"24","alt":2300,"pts":[[[2716009.160148201,1263977.8304871703],"Querabflug",1],[[2716682.741764577,1262734.9917048241],"Gegenanflug",0],[[2719654.677009776,1264307.255170022],"Queranflug",0],[[2719177.124218056,1265636.0773260447],"Endanflug",1]],"s0":0,"tdp":80,"tdpName":"","vol":"links · Südost","label":"24 · Südost 2300 ft · festes Fahrwerk","name":"festes Fahrwerk","hand":"L","side":"SE","var":"fixed"},{"id":"24r","land":"24","alt":2600,"pts":[[[2716009.160148201,1263977.8304871703],"Querabflug",1],[[2716680.2971365214,1262739.502336472],"Gegenanflug",0],[[2721104.32980255,1265063.3341142212],"Queranflug",0],[[2720462.529049008,1266308.9127656515],"Endanflug",1]],"s0":0,"tdp":80,"tdpName":"","vol":"links · Südost","label":"24 · Südost 2600 ft · Einziehfahrwerk","name":"Einziehfahrwerk","hand":"L","side":"SE","var":"retract"},{"id":"06f","land":"06","alt":2300,"pts":[[[2719177.124218056,1265636.0773260447],"Querabflug",1],[[2719654.677009776,1264307.255170022],"Gegenanflug",0],[[2716682.741764577,1262734.9917048241],"Queranflug",0],[[2716009.160148201,1263977.8304871703],"Endanflug",1]],"s0":0,"tdp":140,"tdpName":"","vol":"rechts · Südost","label":"06 · Südost 2300 ft · festes Fahrwerk","name":"festes Fahrwerk","hand":"R","side":"SE","var":"fixed"},{"id":"06r","land":"06","alt":2600,"pts":[[[2720462.529049008,1266308.9127656515],"Querabflug",1],[[2721104.32980255,1265063.3341142212],"Gegenanflug",0],[[2716680.2971365214,1262739.502336472],"Queranflug",0],[[2716009.160148201,1263977.8304871703],"Endanflug",1]],"s0":0,"tdp":140,"tdpName":"","vol":"rechts · Südost","label":"06 · Südost 2600 ft · Einziehfahrwerk","name":"Einziehfahrwerk","hand":"R","side":"SE","var":"retract"}],"freqs":[["AD","119.305"],["ZURICH INFO","124.700"]],"web":"https://www.mfgt.ch"},"LSGN":{"name":"Neuchâtel","icao":"LSGN","elev":1427,"freq":"AD 123.605 · LSR4 128.680","rwy":{"c":[2556309.7296425668,1200874.9909086707],"brg":48.300000000000004,"len":700,"wid":20,"lo":"05","hi":"23","thr":{"23":0,"05":0}},"marks":[],"rps":[["E",[2561355.8629759,1203613.9575753375]]],"places":[["Neuchâtel",[2560610.796309233,1204799.2909086708],1],["Colombier",[2555132.8629759,1202132.2909086708],0],["Boudry",[2553058.5296425666,1200803.0242420041],0],["Cortaillod",[2554387.796309233,1199025.0242420041],0],["Bevaix",[2551720.796309233,1198279.9575753375],0],["Bôle",[2554387.796309233,1202428.624242004],0],["Auvernier",[2556462.1296425667,1202877.3575753374],0]],"peaks":[],"note":"Volte südöstlich über dem See, 2500 ft; Aufsetzpunkt 100 m nach der Schwelle","dem":null,"frame":[2550002,1195012,2562008,1207009],"circuits":[{"id":"05-2500","land":"05","alt":2500,"pts":[[[2558522.9363557105,1202846.8861608037],"Querabflug",1],[[2559733.8099009045,1201323.0111300622],"Gegenanflug",0],[[2554768.796309233,1197374.0242420041],"Queranflug",0],[[2553371.796309233,1198390.0242420041],"Endanflug",1]],"s0":0,"tdp":100,"tdpName":"","vol":"rechts · Südost","label":"05 · Südost 2500 ft","name":"Südost-Volte","hand":"R","side":"SE","var":null},{"id":"23-2500","land":"23","alt":2500,"pts":[[[2553371.796309233,1198390.0242420041],"Querabflug",1],[[2554768.796309233,1197374.0242420041],"Gegenanflug",0],[[2559733.8099009045,1201323.0111300622],"Queranflug",0],[[2558522.9363557105,1202846.8861608037],"Endanflug",1]],"s0":0,"tdp":100,"tdpName":"","vol":"links · Südost","label":"23 · Südost 2500 ft","name":"Südost-Volte","hand":"L","side":"SE","var":null}],"freqs":[["AD","123.605"],["LSR4","128.680"]],"web":"https://www.gvmn.ch"},"LSTA":{"name":"Raron","icao":"LSTA","elev":2093,"freq":"AD 129.880","rwy":{"c":[2629315.791269691,1128193.8513299944],"brg":90.99443195274665,"len":841,"wid":40,"lo":"10","hi":"28","thr":{"10":183,"28":100}},"marks":[],"rps":[],"places":[["Raron",[2628850.2532351348,1129411.8229593006],1],["Visp",[2633591.586568468,1127337.489625967],1],["Steg",[2623812.586568468,1129411.8229593006],0],["Niedergesteln",[2626183.2532351348,1129564.2229593005],0],["Turtig",[2627664.9199018013,1128226.489625967],0],["Baltschieder",[2632854.986568468,1128819.1562926339],0],["Eischoll",[2625742.986568468,1126897.2229593005],0],["Bürchen",[2629739.2532351348,1125855.8229593006],0]],"peaks":[],"note":"Talvolten 3200 ft: Piste 10 nördlich, Piste 28 südlich; vor jedem Anflug mindestens eine halbe Platzrunde; Aufsetzpunkt 100 m nach der Schwelle","dem":null,"frame":[2623000,1121995,2634997,1134001],"circuits":[{"id":"10-3200","land":"10","alt":3200,"pts":[[[2631911.9430723465,1128148.7877041542],"Querabflug",1],[[2632062.8662641365,1128458.474734733],"Gegenanflug",0],[[2627165.941183696,1128367.7575352425],"Gegenanflug",0],[[2625605.1796484888,1129068.0347730832],"Queranflug",0],[[2625167.985365543,1128428.1399468298],"Queranflug",0],[[2625338.8988290336,1128262.881651245],"Endanflug",1]],"s0":0,"tdp":283,"tdpName":"","vol":"links · Nord","label":"10 · Nord 3200 ft","name":"Nord-Volte","hand":"L","side":"N","var":null},{"id":"28-3200","land":"28","alt":3200,"pts":[[[2625582.992174281,1128258.6447144186],"Gegenanflug",1],[[2631912.8857920705,1127254.8525630317],"Queranflug",0],[[2632496.815354277,1127929.0074560347],"Queranflug",0],[[2632007.7878849036,1128147.1240438214],"Endanflug",1]],"s0":0,"tdp":200,"tdpName":"","vol":"links · Süd","label":"28 · Süd 3200 ft","name":"Süd-Volte","hand":"L","side":"S","var":null}],"freqs":[["AD","129.880"]],"web":"https://www.fgo.ch/piloten/flugplatz_info"},"LSGR":{"name":"Reichenbach","icao":"LSGR","elev":2372,"freq":"AD 127.705","rwy":{"c":[2618327.397014047,1162526.5503496265],"brg":38.73011347074864,"len":811,"wid":18,"lo":"03","hi":"21","thr":{"21":100,"03":155}},"marks":[],"rps":[["N",[2616774.0472783195,1166753.9975663358]],["E",[2622404.380611653,1166008.9308996692]],["S",[2619000.780611653,1161267.597566336]]],"places":[["Reichenbach",[2620626.380611653,1163197.9975663358],1],["Frutigen",[2615292.380611653,1159489.597566336],1],["Aeschi",[2619737.380611653,1167050.330899669],0],["Mülenen",[2619889.780611653,1164679.6642330026],0],["Kien",[2619441.0472783195,1162308.9975663358],0],["Wimmis",[2616477.7139449865,1169124.6642330026],0],["Faulensee",[2620626.380611653,1169717.330899669],0]],"peaks":[],"note":"Gebirgsflugplatz: Piste 03 Volte westlich via Kandertal 3500 ft, Piste 21 Volte östlich 3800 ft; Aufsetzpunkt 100 m nach der Schwelle","dem":null,"frame":[2612989,1157999,2624987,1170005],"circuits":[{"id":"03-3500","land":"03","alt":3500,"pts":[[[2619301.7640270623,1163741.4500702121],"Querabflug",1],[[2619398.7139449865,1166372.9975663358],"Querabflug",0],[[2619229.380611653,1167092.6642330026],"Gegenanflug",0],[[2618594.380611653,1166796.330899669],"Gegenanflug",0],[[2618786.498496922,1165549.0918044252],"Gegenanflug",0],[[2618500.5799443107,1164065.8196781056],"Gegenanflug",0],[[2616604.7139449865,1161504.6642330026],"Queranflug",0],[[2616435.380611653,1160869.6642330026],"Queranflug",0],[[2616758.328255832,1160570.14052615],"Endanflug",1]],"s0":0,"tdp":255,"tdpName":"","vol":"links · Nordwest","label":"03 · Nordwest 3500 ft","name":"Nordwest-Volte","hand":"L","side":"NW","var":null},{"id":"21-3800","land":"21","alt":3800,"pts":[[[2616816.380611653,1160700.330899669],"Querabflug",1],[[2617070.380611653,1160488.6642330026],"Gegenanflug",0],[[2621515.380611653,1164848.9975663358],"Queranflug",0],[[2621600.0472783195,1165483.9975663358],"Queranflug",0],[[2620981.516881098,1165835.8675184231],"Endanflug",1]],"s0":0,"tdp":200,"tdpName":"","vol":"links · Südost","label":"21 · Südost 3800 ft","name":"Südost-Volte","hand":"L","side":"SE","var":null}],"freqs":[["AD","127.705"]],"web":"https://www.flugplatz-reichenbach.ch"},"LSZS":{"name":"Samedan","icao":"LSZS","elev":5602,"freq":"ATIS 136.160 · AFIS 135.330","rwy":{"c":[2787567.9092686726,1156585.3462739517],"brg":27.46891738456744,"len":1843,"wid":40,"lo":"03","hi":"21","thr":{"21":110,"03":0}},"marks":[],"rps":[["E",[2791252.1425851136,1160969.4979769855]],["W",[2785181.5425851136,1151783.164643652]],["S",[2788288.80925178,1151783.164643652]]],"places":[["Samedan",[2787848.5425851136,1156228.164643652],1],["Celerina",[2787103.4759184467,1154450.164643652],0],["St. Moritz",[2785181.5425851136,1152824.5646436522],1],["Pontresina",[2790363.1425851136,1152824.5646436522],0],["Bever",[2787399.80925178,1158006.164643652],0],["La Punt",[2791404.5425851136,1161562.164643652],0]],"peaks":[],"note":"Gebirgsflugplatz, Einweisung obligatorisch; Volte westlich 6600 ft; Aufsetzpunkt 150 m nach der Schwelle","dem":null,"frame":[2782015,1149997,2794012,1161994],"circuits":[{"id":"03-6600","land":"03","alt":6600,"pts":[[[2789430.1848015357,1160167.487587349],"Querabflug",1],[[2788754.4759184467,1159809.5646436522],"Gegenanflug",0],[[2785792.21779003,1156299.895355416],"Queranflug",0],[[2785820.90675969,1154860.1977673322],"Queranflug",0],[[2786347.548520507,1154237.9467747307],"Endanflug",1]],"s0":0,"tdp":150,"tdpName":"","vol":"links · Nordwest","label":"03 · Nordwest 6600 ft","name":"Nordwest-Volte","hand":"L","side":"NW","var":null},{"id":"21-6600","land":"21","alt":6600,"pts":[[[2786347.548520507,1154237.9467747307],"Querabflug",1],[[2785820.90675969,1154860.1977673322],"Querabflug",0],[[2785792.21779003,1156299.895355416],"Gegenanflug",0],[[2788754.4759184467,1159809.5646436522],"Queranflug",0],[[2789430.1848015357,1160167.487587349],"Endanflug",1]],"s0":0,"tdp":260,"tdpName":"","vol":"rechts · Nordwest","label":"21 · Nordwest 6600 ft","name":"Nordwest-Volte","hand":"R","side":"NW","var":null}],"freqs":[["ATIS","136.160"],["AFIS","135.330"],["DELIVERY","121.880"],["GLD A/A","123.680"],["LSR11A","135.480"]],"web":"https://www.engadin-airport.ch"},"LSZR":{"name":"St. Gallen-Altenrhein","icao":"LSZR","elev":1306,"freq":"ATIS 123.780 · TWR 135.430","rwy":{"c":[2759887.57672965,1261532.0769655085],"brg":97.14899282607495,"len":1323,"wid":30,"lo":"10","hi":"28","thr":{"10":0,"28":0}},"marks":[],"rps":[["V",[2747665.722882888,1268023.9830351304]],["E",[2769196.456216221,1265653.3163684637]],["Z",[2750332.722882888,1258371.9830351304]],["S",[2767113.6562162214,1257626.9163684638]]],"places":[["Altenrhein",[2759095.722882888,1262529.1163684637],0],["Rorschach",[2753160.5895495545,1261191.3830351303],1],["Staad",[2757614.0562162213,1260751.1163684637],0],["Rheineck",[2760729.7895495547,1260006.049701797],0],["Thal",[2758350.6562162214,1259260.9830351304],0],["St. Margrethen",[2764742.9895495544,1258075.6497017972],0],["Arbon",[2749740.0562162213,1265500.9163684638],1],["Höchst",[2765928.322882888,1259117.049701797],0]],"peaks":[],"note":"Volte nördlich über dem Bodensee: Einziehfahrwerk 2600 ft, festes Fahrwerk 2300 ft; Aufsetzpunkt 150 m nach der Schwelle","dem":null,"frame":[2744999,1256001,2769992,1269497],"circuits":[{"id":"10f","land":"10","alt":2300,"pts":[[[2762446.362298941,1261211.1412105144],"Querabflug",1],[[2762620.8462590724,1263591.6206867532],"Gegenanflug",0],[[2757354.985026854,1264085.2507219543],"Queranflug",0],[[2757153.021682764,1261875.0586123797],"Endanflug",1]],"s0":0,"tdp":150,"tdpName":"","vol":"links · Nord","label":"10 · Nord 2300 ft · festes Fahrwerk","name":"festes Fahrwerk","hand":"L","side":"N","var":"fixed"},{"id":"10r","land":"10","alt":2600,"pts":[[[2762446.362298941,1261211.1412105144],"Querabflug",1],[[2762620.8462590724,1263591.6206867532],"Gegenanflug",0],[[2757354.985026854,1264085.2507219543],"Queranflug",0],[[2757153.021682764,1261875.0586123797],"Endanflug",1]],"s0":0,"tdp":150,"tdpName":"","vol":"links · Nord","label":"10 · Nord 2600 ft · Einziehfahrwerk","name":"Einziehfahrwerk","hand":"L","side":"N","var":"retract"},{"id":"28f","land":"28","alt":2300,"pts":[[[2757153.021682764,1261875.0586123797],"Querabflug",1],[[2757354.985026854,1264085.2507219543],"Gegenanflug",0],[[2762620.8462590724,1263591.6206867532],"Queranflug",0],[[2762446.362298941,1261211.1412105144],"Endanflug",1]],"s0":0,"tdp":150,"tdpName":"","vol":"rechts · Nord","label":"28 · Nord 2300 ft · festes Fahrwerk","name":"festes Fahrwerk","hand":"R","side":"N","var":"fixed"},{"id":"28r","land":"28","alt":2600,"pts":[[[2757153.021682764,1261875.0586123797],"Querabflug",1],[[2757354.985026854,1264085.2507219543],"Gegenanflug",0],[[2762620.8462590724,1263591.6206867532],"Queranflug",0],[[2762446.362298941,1261211.1412105144],"Endanflug",1]],"s0":0,"tdp":150,"tdpName":"","vol":"rechts · Nord","label":"28 · Nord 2600 ft · Einziehfahrwerk","name":"Einziehfahrwerk","hand":"R","side":"N","var":"retract"}],"freqs":[["ATIS","123.780"],["TWR","135.430"],["TWR ALTN","119.700"],["GND","121.805"],["ZURICH INFO","124.700"],["MÜNCHEN/LANGEN INFO","126.950"],["TMZ MONITOR","119.925"],["EMERG","121.500"]],"web":"https://www.peoples.ch/airport-st-gallen-altenrhein"},"LSGS":{"name":"Sion","icao":"LSGS","elev":1582,"freq":"ATIS 130.630 · TWR 118.275","rwy":{"c":[2591383.5155853815,1118660.934445213],"brg":73.02851307523026,"len":2003,"wid":40,"lo":"07","hi":"25","thr":{"25":50,"07":50}},"marks":[],"rps":[["W",[2582860.850419597,1113527.9111069567]],["NW",[2581074.38375293,1113976.6444402898]],["E2",[2598304.0504195965,1122443.3111069566]],["N",[2593257.917086263,1120809.24444029]],["S",[2589693.4504195964,1117244.7777736231]]],"places":[["Sion",[2591623.850419597,1119911.7777736231],1],["Bramois",[2595924.917086263,1120360.5111069565],0],["Conthey",[2589100.78375293,1120953.1777736233],0],["Vétroz",[2587906.98375293,1119471.5111069565],0],["Ardon",[2586425.317086263,1117981.3777736232],0],["Savièse",[2591327.5170862633,1122587.24444029],0],["Chamoson",[2585239.98375293,1116652.1111069566],0],["Riddes",[2584046.18375293,1113824.24444029],0],["St-Léonard",[2598160.1170862634,1122443.3111069566],0]],"peaks":[],"note":"Gebirgsflugplatz: Volte nördlich (07) bzw. südlich (25) der Piste; einmotorig 3000 ft (07) bzw. 2700 ft (25), mehrmotorig 4000 ft (Weg schematisch gleich); Helikopter-Volten nicht dargestellt; Aufsetzpunkt 300 m nach der Schwelle","dem":null,"frame":[2579000,1112495,2603994,1125999],"circuits":[{"id":"07s","land":"07","alt":3000,"pts":[[[2594650.68375293,1119658.0303946617],"Querabflug",1],[[2594650.68375293,1121077.7076649542],"Gegenanflug",0],[[2586509.98375293,1119276.7777736231],"Queranflug",0],[[2586509.98375293,1117752.7777736231],"Queranflug",0],[[2587058.2116408856,1117340.9096341156],"Endanflug",1]],"s0":0,"tdp":350,"tdpName":"","vol":"links · Nord","label":"07 · Nord 3000 ft · einmotorig","name":"einmotorig","hand":"L","side":"N","var":"single"},{"id":"07m","land":"07","alt":4000,"pts":[[[2594650.68375293,1119658.0303946617],"Querabflug",1],[[2594650.68375293,1121077.7076649542],"Gegenanflug",0],[[2586509.98375293,1119276.7777736231],"Queranflug",0],[[2586509.98375293,1117752.7777736231],"Queranflug",0],[[2587058.2116408856,1117340.9096341156],"Endanflug",1]],"s0":0,"tdp":350,"tdpName":"","vol":"links · Nord","label":"07 · Nord 4000 ft · mehrmotorig","name":"mehrmotorig","hand":"L","side":"N","var":"multi"},{"id":"25s","land":"25","alt":2700,"pts":[[[2588372.6504195966,1117744.3111069566],"Querabflug",1],[[2588626.6504195966,1116863.7777736231],"Gegenanflug",0],[[2593029.317086263,1117879.7777736231],"Gegenanflug",0],[[2596684.4667650205,1118006.8212496035],"Queranflug",0],[[2597079.56914884,1119376.1594937148],"Queranflug",0],[[2596147.8320234693,1120114.9399872276],"Endanflug",1]],"s0":0,"tdp":350,"tdpName":"","vol":"links · Süd","label":"25 · Süd 2700 ft · einmotorig","name":"einmotorig","hand":"L","side":"S","var":"single"},{"id":"25m","land":"25","alt":4000,"pts":[[[2588372.6504195966,1117744.3111069566],"Querabflug",1],[[2588626.6504195966,1116863.7777736231],"Gegenanflug",0],[[2593029.317086263,1117879.7777736231],"Gegenanflug",0],[[2596684.4667650205,1118006.8212496035],"Queranflug",0],[[2597079.56914884,1119376.1594937148],"Queranflug",0],[[2596147.8320234693,1120114.9399872276],"Endanflug",1]],"s0":0,"tdp":350,"tdpName":"","vol":"links · Süd","label":"25 · Süd 4000 ft · mehrmotorig","name":"mehrmotorig","hand":"L","side":"S","var":"multi"}],"freqs":[["ATIS","130.630"],["TWR","118.275"],["TWR ALTN","119.700"],["GND","121.705"]],"web":"https://www.sionaeroport.ch"},"LSZK":{"name":"Speck-Fehraltorf","icao":"LSZK","elev":1759,"freq":"AD 120.355 · DÜBENDORF TWR 118.975","rwy":{"c":[2699602.62536957,1248125.3091575205],"brg":122.35673586877931,"len":625,"wid":18,"lo":"12","hi":"30","thr":{"12":0,"30":0}},"marks":[],"rps":[["S",[2701159.1245326963,1243674.7222390152]]],"places":[["Fehraltorf",[2699525.05786603,1249914.6555723485],1],["Pfäffikon",[2701751.791199363,1247984.2555723484],1],["Uster",[2698187.3245326965,1245605.122239015],1],["Russikon",[2700862.791199363,1251099.9889056818],0],["Volketswil",[2694919.191199363,1249914.6555723485],0],["Wetzikon",[2701599.391199363,1244267.388905682],0],["Illnau",[2698187.3245326965,1253030.388905682],0]],"peaks":[],"note":"Volte nordöstlich, 2500 ft; Anflug Piste 12 Mitte Queranflug max. 2300 ft; Aufsetzpunkt 100 m nach der Schwelle","dem":null,"frame":[2693006,1236012,2711006,1254512],"circuits":[{"id":"12-2500","land":"12","alt":2500,"pts":[[[2700837.391199363,1247493.1889056817],"Querabflug",1],[[2700871.2578660296,1249017.1889056817],"Querabflug",0],[[2699643.642319861,1251064.0790053578],"Gegenanflug",0],[[2697604.7262854683,1249391.099284596],"Endanflug",1]],"s0":0,"tdp":100,"tdpName":"","vol":"links · Nordost","label":"12 · Nordost 2500 ft","name":"Nordost-Volte","hand":"L","side":"NE","var":null},{"id":"30-2500","land":"30","alt":2500,"pts":[[[2697604.7262854683,1249391.099284596],"Gegenanflug",1],[[2699643.642319861,1251064.0790053578],"Queranflug",0],[[2700871.2578660296,1249017.1889056817],"Queranflug",0],[[2700837.391199363,1247493.1889056817],"Endanflug",1]],"s0":0,"tdp":100,"tdpName":"","vol":"rechts · Nordost","label":"30 · Nordost 2500 ft","name":"Nordost-Volte","hand":"R","side":"NE","var":null}],"freqs":[["AD","120.355"],["DÜBENDORF TWR","118.975"],["ZURICH TERMINAL","127.755"],["ZURICH INFO","124.700"],["ZURICH TWR","118.100"]],"web":"https://www.fgzo.ch"},"LSZW":{"name":"Thun","icao":"LSZW","elev":1837,"freq":"AD 123.255 · BERN APP 127.325","rwy":{"c":[2612360.7164103677,1178358.738381582],"brg":140.3034219905347,"len":800,"wid":30,"lo":"14","hi":"32","thr":{"14":130,"32":100}},"marks":[],"rps":[["S",[2615566.23703906,1175865.1208584285]]],"places":[["Thun",[2614380.9037057264,1175568.7875250953],1],["Steffisburg",[2614821.170372393,1181199.1208584285],0],["Uetendorf",[2610079.83703906,1180758.854191762],0],["Thierachern",[2609046.9037057264,1178532.1208584285],0],["Allmendingen",[2611417.5703723934,1176754.1208584285],0],["Heimberg",[2614524.83703906,1182977.1208584285],0],["Amsoldingen",[2610968.83703906,1174679.7875250953],0]],"peaks":[],"note":"Volte südwestlich, 2800 ft (östliche Volte auf der VAC nicht übernommen); Aufsetzpunkt 100 m nach der Schwelle","dem":null,"frame":[2605999,1172004,2617996,1184002],"circuits":[{"id":"14-2800","land":"14","alt":2800,"pts":[[[2614185.143126953,1176160.9387081556],"Querabflug",1],[[2613801.488795237,1175769.8370541022],"Gegenanflug",0],[[2610277.611868035,1179362.2203249529],"Queranflug",0],[[2610844.180340333,1180185.6369076576],"Endanflug",1]],"s0":0,"tdp":230,"tdpName":"","vol":"rechts · Südwest","label":"14 · Südwest 2800 ft","name":"Südwest-Volte","hand":"R","side":"SW","var":null},{"id":"32-2800","land":"32","alt":2800,"pts":[[[2610844.180340333,1180185.6369076576],"Querabflug",1],[[2610277.611868035,1179362.2203249529],"Gegenanflug",0],[[2613801.488795237,1175769.8370541022],"Queranflug",0],[[2614185.143126953,1176160.9387081556],"Endanflug",1]],"s0":0,"tdp":200,"tdpName":"","vol":"links · Südwest","label":"32 · Südwest 2800 ft","name":"Südwest-Volte","hand":"L","side":"SW","var":null}],"freqs":[["AD","123.255"],["BERN APP","127.325"]],"web":"https://www.bazl.admin.ch/de/flugfeld-thun"},"LSPV":{"name":"Wangen-Lachen","icao":"LSPV","elev":1335,"freq":"AD 123.205 · ALPS RADAR 119.225","rwy":{"c":[2708244.0301210615,1229196.782652377],"brg":77.69326005120979,"len":497,"wid":18,"lo":"08","hi":"26","thr":{"26":49,"08":30}},"marks":[],"rps":[],"places":[["Lachen",[2706672.6593087586,1227935.3236980927],1],["Wangen",[2710084.7259754254,1227935.3236980927],0],["Galgenen",[2707265.3259754255,1226606.0570314259],0],["Siebnen",[2709635.992642092,1226453.657031426],0],["Altendorf",[2704454.392642092,1227638.9903647592],0],["Rapperswil",[2702820.3259754255,1232676.657031426],1],["Nuolen",[2709043.3259754255,1229120.657031426],0],["Tuggen",[2712895.6593087586,1228680.3903647594],0]],"peaks":[],"note":"Volte nördlich über dem Obersee, 2500 ft; Aufsetzpunkt 70 m nach der Schwelle","dem":null,"frame":[2701991,1222000,2713996,1234006],"circuits":[{"id":"08-2500","land":"08","alt":2500,"pts":[[[2711117.6593087586,1229823.3903647594],"Querabflug",1],[[2711371.6593087586,1230373.7236980926],"Gegenanflug",0],[[2710220.778353631,1230119.6720067917],"Gegenanflug",0],[[2706181.646222755,1229271.0763909891],"Queranflug",0],[[2704908.39675083,1229550.2414471894],"Queranflug",0],[[2704636.3570107585,1228579.1730975497],"Queranflug",0],[[2704928.5500528673,1228473.4825265703],"Endanflug",1]],"s0":0,"tdp":100,"tdpName":"","vol":"links · Nord","label":"08 · Nord 2500 ft","name":"Nord-Volte","hand":"L","side":"N","var":null},{"id":"26-2500","land":"26","alt":2500,"pts":[[[2704928.5500528673,1228473.4825265703],"Querabflug",1],[[2704636.3570107585,1228579.1730975497],"Querabflug",0],[[2704908.39675083,1229550.2414471894],"Querabflug",0],[[2706181.646222755,1229271.0763909891],"Gegenanflug",0],[[2710220.778353631,1230119.6720067917],"Queranflug",0],[[2711371.6593087586,1230373.7236980926],"Queranflug",0],[[2711117.6593087586,1229823.3903647594],"Endanflug",1]],"s0":0,"tdp":120,"tdpName":"","vol":"rechts · Nord","label":"26 · Nord 2500 ft","name":"Nord-Volte","hand":"R","side":"N","var":null}],"freqs":[["AD","123.205"],["ALPS RADAR","119.225"],["ZURICH TERMINAL","127.755"]],"web":"https://www.flugplatzwangen.ch"},"LSZV":{"name":"Sitterdorf","icao":"LSZV","elev":1660,"freq":"AD 118.355 · PPR","rwy":{"c":[2737405.5,1263621.15],"brg":75.93476802986041,"len":479,"wid":20,"lo":"07","hi":"25","thr":{"25":0,"07":0}},"marks":[],"circuits":[{"id":"07","land":"07","label":"Piste 07 · Nord 2700 ft","alt":2700,"vol":"links · Nord","s0":0,"tdp":100,"tdpName":"","pts":[[[2739435.7,1264161.6],"Querabflug",1],[[2739709.1,1264320.3],"Querabflug",0],[[2739391.6,1264655.5],"Gegenanflug",0],[[2738553.7,1264311.5],"Gegenanflug",0],[[2737583.6,1263941.1],"Gegenanflug",0],[[2736966.2,1263782.4],"Gegenanflug",0],[[2736348.9,1264055.8],"Gegenanflug",0],[[2735422.9,1264443.8],"Gegenanflug",0],[[2734743.8,1264285.1],"Queranflug",0],[[2735008.3,1263023.9],"Queranflug",0],[[2735555.1,1263156.2],"Endanflug",1]],"name":null,"hand":"L","side":"N","var":null},{"id":"25","land":"25","label":"Piste 25 · Süd 2700 ft","alt":2700,"vol":"links · Süd","s0":0,"tdp":100,"tdpName":"","pts":[[[2735996.1,1263429.6],"Querabflug",0],[[2735616.9,1262979.8],"Querabflug",0],[[2735952,1262512.4],"Gegenanflug",0],[[2737319,1262847.5],"Gegenanflug",0],[[2738465.5,1263147.4],"Gegenanflug",0],[[2739259.3,1262777],"Gegenanflug",0],[[2739770.8,1262697.6],"Queranflug",0],[[2739832.6,1263112.1],"Queranflug",0],[[2739612.1,1263817.6],"Queranflug",0],[[2738994.7,1263817.6],"Endanflug",1]],"name":null,"hand":"L","side":"S","var":null}],"rps":[["Sektor Nord · MNM 3500 ft",[2738597.8,1266154.8]],["Sektor Süd · MNM 3500 ft",[2738509.6,1260422.2]]],"places":[["Sitterdorf",[2736149,1262927],1],["Bischofszell",[2735776,1261928],1],["Zihlschlacht",[2736945,1264928],0],["Hohentannen",[2734515,1263482],0],["Halden",[2733191.5,1263270.8],0],["Wilen",[2738981,1262054],0],["Rotzenwil",[2739942,1264296],0],["Muolen",[2742112,1265006],0],["Amriswil",[2739674,1267960],1]],"peaks":[["OBST 1893 ft",[2736534.1,1264293.9]],["OBST 1844 ft",[2735766.8,1263658.9]],["OBST 2066 ft",[2738597.8,1261357]]],"note":"PPR; Linksvolten 2700 ft (Piste 07 Gegenanflug Nord, Piste 25 Gegenanflug Süd); Abflug geradeaus bis 3000 ft oder mindestens 2 min (25 Richtung Schweizersholz, 07 Richtung Muolen); bevorzugte Anflugsektoren Nord (Amriswil / Zihlschlacht) und Süd (Wilen / Waldkirch), MNM 3500 ft; RTF-Meldung 5 min vor ETA; Hindernisse im End- und Abflug (LSZV AD INFO 1); Fallschirmabsprünge nördlich der Piste, Heliport am Platz, Helikopterroute Süd MNM 3000 ft; TMZ NE: Code 7000 oder Monitor 119.925 mit Code 2677; Graspiste, Lage und Masse (480 × 20 m) aus OpenStreetMap, da die AD-INFO-Seiten nicht vorliegen; Website des Flugplatzes noch nicht verglichen","dem":null,"frame":[2731406,1257621,2743406,1269621],"freqs":[["AD SITTERDORF","118.355"],["TMZ NE MONITOR (Code 2677)","119.925"],["ZURICH INFO","124.700"],["ST.GALLEN TWR","135.430"],["FRIEDRICHSHAFEN TWR","120.080"],["EMERG","121.500"]],"web":"https://www.erlebnisflugplatz.ch/deu/flugbetrieb.shtml"}};
+const I18N={
+de:{set_pcolor:'Farbe des Flugzeugs',set_ptype:'Flugzeugtyp',pt_low:'Tiefdecker',pt_high:'Hochdecker',lang:'Deutsch',menu:'Menü',nav_circ:'Platzrunden',nav_set:'Einstellungen',nav_imp:'Impressum',airport:'Flugplatz',search:'Name oder ICAO',
+ lyImg:'Luftbild',lyMap:'Landeskarte',lyRel:'Relief',exag:'Überhöhung',speed:'Tempo',pause:'Pause',play:'Abspielen',chase:'Mitfliegen',home:'Ansicht zurücksetzen',
+ alt:'Höhe',agl:'über Gelände',tdp:'bis Aufsetzpunkt',circuit:'Volte',base:'Base-Kurve',final:'Final-Kurve',
+ profile:'Höhenprofil entlang der Volte',hmax:'Höchstes Gelände ±1 km',hclr:'Min. Abstand in der Volte',
+ k_path:'Flugweg',k_ground:'Gelände unter dem Flugweg',k_side:'höchstes Gelände ±1 km seitlich',animated:'animiert',compare:'zum Vergleich',
+ freqs:'Frequenzen',website:'Website des Flugplatzes',touchdown:'Aufsetzpunkt',downwindTag:'Gegenanflug',
+ src:'Volten, Höhen und Meldepunkte nach den VAC der Flugplätze (skyguide), Pistendaten nach AIP und OurAirports. Luftbild, Landeskarte und Höhendaten © swisstopo. Kurvenradien schematisch. Nicht für die Navigation.',
+ approach:'Anflug',note_lang:'',
+ legs:{Startlauf:'Startlauf',Steigflug:'Steigflug',Querabflug:'Querabflug',Gegenanflug:'Gegenanflug',Queranflug:'Queranflug',Endanflug:'Endanflug',Ausrollen:'Ausrollen'},
+ short:{Startlauf:'Start',Steigflug:'Start',Querabflug:'Querabflug',Gegenanflug:'Gegenanflug',Queranflug:'Queranflug',Endanflug:'Endanflug',Ausrollen:''},
+ side:{N:'Nord',NE:'Nordost',E:'Ost',SE:'Südost',S:'Süd',SW:'Südwest',W:'West',NW:'Nordwest'},hand:{L:'links',R:'rechts'},
+ var:{retract:'Einziehfahrwerk',fixed:'festes Fahrwerk',single:'einmotorig',multi:'mehrmotorig',inner:'innen',outer:'aussen'},
+ sideCircuit:s=>s+'-Volte',
+ tiles:(n,a,b)=>`${n}: ${a} von ${b} Kacheln geladen`,tilesMissing:(n,a,b)=>`${n}: ${a} von ${b} Kacheln fehlen`,
+ tilesFail:n=>`${n} konnte nicht geladen werden. Angezeigt wird das Relief. Prüfe die Internetverbindung, oder ob der Browser den Kartendienst blockiert.`,
+ demLoad:'Gelände wird geladen …',demFail:'Höhendaten konnten nicht geladen werden. Gelände flach auf Platzhöhe.',glErr:'3D-Darstellung konnte nicht geladen werden.',
+ set_title:'Einstellungen',set_color:'Farbe der Platzrunde',set_width:'Dicke der Platzrunde',set_gs:'Anflugwinkel',set_turns:'Höhen der Base- und Final-Kurve anzeigen',
+ set_reset:'Zurücksetzen',set_back:'Zurück zu den Platzrunden',set_saved:'Einstellungen werden in diesem Browser gespeichert.',
+ imp_note:'Das Impressum ist auf Deutsch verbindlich.'},
+fr:{set_pcolor:'Couleur de l’avion',set_ptype:'Type d’avion',pt_low:'Aile basse',pt_high:'Aile haute',lang:'Français',menu:'Menu',nav_circ:'Tours de piste',nav_set:'Réglages',nav_imp:'Mentions légales',airport:'Aérodrome',search:'Nom ou OACI',
+ lyImg:'Orthophoto',lyMap:'Carte nationale',lyRel:'Relief',exag:'Exagération',speed:'Vitesse',pause:'Pause',play:'Lecture',chase:'Suivre l’avion',home:'Réinitialiser la vue',
+ alt:'Altitude',agl:'au-dessus du sol',tdp:'jusqu’au toucher',circuit:'Tour de piste',base:'Virage de base',final:'Virage en finale',
+ profile:'Profil altimétrique du tour de piste',hmax:'Relief le plus haut ±1 km',hclr:'Marge min. dans le tour',
+ k_path:'Trajectoire',k_ground:'Relief sous la trajectoire',k_side:'relief le plus haut ±1 km latéral',animated:'animé',compare:'pour comparaison',
+ freqs:'Fréquences',website:'Site de l’aérodrome',touchdown:'Point de toucher',downwindTag:'Vent arrière',
+ src:'Tours de piste, altitudes et points de report d’après les VAC (skyguide), données de piste d’après l’AIP et OurAirports. Orthophoto, carte nationale et altitudes © swisstopo. Rayons de virage schématiques. Pas pour la navigation.',
+ approach:'Approche',note_lang:'Remarque en allemand : ',
+ legs:{Startlauf:'Roulage au décollage',Steigflug:'Montée initiale',Querabflug:'Étape vent traversier',Gegenanflug:'Vent arrière',Queranflug:'Étape de base',Endanflug:'Finale',Ausrollen:'Roulage à l’atterrissage'},
+ short:{Startlauf:'Départ',Steigflug:'Départ',Querabflug:'Vent traversier',Gegenanflug:'Vent arrière',Queranflug:'Base',Endanflug:'Finale',Ausrollen:''},
+ side:{N:'nord',NE:'nord-est',E:'est',SE:'sud-est',S:'sud',SW:'sud-ouest',W:'ouest',NW:'nord-ouest'},hand:{L:'à gauche',R:'à droite'},
+ var:{retract:'train rentrant',fixed:'train fixe',single:'monomoteur',multi:'multimoteur',inner:'intérieur',outer:'extérieur'},
+ sideCircuit:s=>'Tour '+s,
+ tiles:(n,a,b)=>`${n} : ${a} sur ${b} tuiles chargées`,tilesMissing:(n,a,b)=>`${n} : ${a} tuiles sur ${b} manquantes`,
+ tilesFail:n=>`${n} n’a pas pu être chargé. Le relief est affiché. Vérifie la connexion Internet ou si le navigateur bloque le service cartographique.`,
+ demLoad:'Chargement du relief …',demFail:'Les altitudes n’ont pas pu être chargées. Relief plat à l’altitude de l’aérodrome.',glErr:'L’affichage 3D n’a pas pu être chargé.',
+ set_title:'Réglages',set_color:'Couleur du tour de piste',set_width:'Épaisseur du tour de piste',set_gs:'Pente d’approche',set_turns:'Afficher les altitudes des virages de base et de finale',
+ set_reset:'Réinitialiser',set_back:'Retour aux tours de piste',set_saved:'Les réglages sont enregistrés dans ce navigateur.',
+ imp_note:'Les mentions légales font foi en allemand.'},
+it:{set_pcolor:'Colore dell’aereo',set_ptype:'Tipo di aereo',pt_low:'Ala bassa',pt_high:'Ala alta',lang:'Italiano',menu:'Menu',nav_circ:'Circuiti',nav_set:'Impostazioni',nav_imp:'Note legali',airport:'Aerodromo',search:'Nome o ICAO',
+ lyImg:'Ortofoto',lyMap:'Carta nazionale',lyRel:'Rilievo',exag:'Esagerazione',speed:'Velocità',pause:'Pausa',play:'Avvia',chase:'Segui l’aereo',home:'Reimposta vista',
+ alt:'Altitudine',agl:'sopra il suolo',tdp:'al punto di contatto',circuit:'Circuito',base:'Virata in base',final:'Virata in finale',
+ profile:'Profilo altimetrico del circuito',hmax:'Terreno più alto ±1 km',hclr:'Separazione min. nel circuito',
+ k_path:'Traiettoria',k_ground:'Terreno sotto la traiettoria',k_side:'terreno più alto ±1 km laterale',animated:'animato',compare:'per confronto',
+ freqs:'Frequenze',website:'Sito dell’aerodromo',touchdown:'Punto di contatto',downwindTag:'Sottovento',
+ src:'Circuiti, altitudini e punti di riporto secondo le VAC (skyguide), dati della pista secondo AIP e OurAirports. Ortofoto, carta nazionale e altitudini © swisstopo. Raggi di virata schematici. Non per la navigazione.',
+ approach:'Avvicinamento',note_lang:'Nota in tedesco: ',
+ legs:{Startlauf:'Corsa di decollo',Steigflug:'Salita iniziale',Querabflug:'Lato traverso',Gegenanflug:'Sottovento',Queranflug:'Base',Endanflug:'Finale',Ausrollen:'Corsa d’atterraggio'},
+ short:{Startlauf:'Decollo',Steigflug:'Decollo',Querabflug:'Traverso',Gegenanflug:'Sottovento',Queranflug:'Base',Endanflug:'Finale',Ausrollen:''},
+ side:{N:'nord',NE:'nord-est',E:'est',SE:'sud-est',S:'sud',SW:'sud-ovest',W:'ovest',NW:'nord-ovest'},hand:{L:'sinistro',R:'destro'},
+ var:{retract:'carrello retrattile',fixed:'carrello fisso',single:'monomotore',multi:'plurimotore',inner:'interno',outer:'esterno'},
+ sideCircuit:s=>'Circuito '+s,
+ tiles:(n,a,b)=>`${n}: ${a} di ${b} tessere caricate`,tilesMissing:(n,a,b)=>`${n}: mancano ${a} di ${b} tessere`,
+ tilesFail:n=>`Impossibile caricare ${n}. Viene mostrato il rilievo. Controlla la connessione Internet o se il browser blocca il servizio cartografico.`,
+ demLoad:'Caricamento del terreno …',demFail:'Impossibile caricare le altitudini. Terreno piatto all’altitudine dell’aerodromo.',glErr:'Impossibile caricare la vista 3D.',
+ set_title:'Impostazioni',set_color:'Colore del circuito',set_width:'Spessore del circuito',set_gs:'Angolo di avvicinamento',set_turns:'Mostra le altitudini delle virate in base e in finale',
+ set_reset:'Reimposta',set_back:'Torna ai circuiti',set_saved:'Le impostazioni sono salvate in questo browser.',
+ imp_note:'Fa fede la versione tedesca delle note legali.'},
+rm:{set_pcolor:'Colur da l’aviun',set_ptype:'Tip d’aviun',pt_low:'Ala bassa',pt_high:'Ala auta',lang:'Rumantsch',menu:'Menu',nav_circ:'Rundas da plazza',nav_set:'Parameters',nav_imp:'Impressum',airport:'Plazza aviatica',search:'Num u ICAO',
+ lyImg:'Ortofoto',lyMap:'Charta naziunala',lyRel:'Relief',exag:'Exageraziun',speed:'Spertadad',pause:'Pausa',play:'Cumenzar',chase:'Sviolar cun',home:'Restaurar la vista',
+ alt:'Autezza',agl:'sur il terren',tdp:'fin al punct da tutgada',circuit:'Runda',base:'Curva da basa',final:'Curva finala',
+ profile:'Profil d’autezza da la runda',hmax:'Terren il pli aut ±1 km',hclr:'Distanza min. en la runda',
+ k_path:'Via da sgol',k_ground:'Terren sut la via da sgol',k_side:'terren il pli aut ±1 km da la vart',animated:'animà',compare:'per cumparegliar',
+ freqs:'Frequenzas',website:'Pagina d’internet da la plazza aviatica',touchdown:'Punct da tutgada',downwindTag:'Vent davos',
+ src:'Rundas, autezzas e puncts d’annunzia tenor las VAC (skyguide), datas da la pista tenor AIP ed OurAirports. Ortofoto, charta naziunala ed autezzas © swisstopo. Radis da curva schematics. Betg per la navigaziun.',
+ approach:'Avischinaziun',note_lang:'Remartga per tudestg: ',
+ legs:{Startlauf:'Partenza',Steigflug:'Ascensiun',Querabflug:'Traversala',Gegenanflug:'Vent davos',Queranflug:'Basa',Endanflug:'Final',Ausrollen:'Rullar ora'},
+ short:{Startlauf:'Partenza',Steigflug:'Partenza',Querabflug:'Traversala',Gegenanflug:'Vent davos',Queranflug:'Basa',Endanflug:'Final',Ausrollen:''},
+ side:{N:'nord',NE:'nordost',E:'ost',SE:'sidost',S:'sid',SW:'sidvest',W:'vest',NW:'nordvest'},hand:{L:'sanester',R:'dretg'},
+ var:{retract:'mecanissem d’atterrada retractabel',fixed:'mecanissem d’atterrada fix',single:'cun in motor',multi:'cun plirs motors',inner:'intern',outer:'extern'},
+ sideCircuit:s=>'Runda '+s,
+ tiles:(n,a,b)=>`${n}: ${a} da ${b} plattas chargiadas`,tilesMissing:(n,a,b)=>`${n}: ${a} da ${b} plattas mancan`,
+ tilesFail:n=>`${n} n’ha betg pudì vegnir chargià. Il relief vegn mussà. Controllescha la colliaziun d’internet u sch’il navigatur blochescha il servetsch da chartas.`,
+ demLoad:'Il terren vegn chargià …',demFail:'Las datas d’autezza n’han betg pudì vegnir chargiadas. Terren plat a l’autezza da la plazza.',glErr:'La vista 3D n’ha betg pudì vegnir chargiada.',
+ set_title:'Parameters',set_color:'Colur da la runda',set_width:'Grossezza da la runda',set_gs:'Angul d’avischinaziun',set_turns:'Mussar las autezzas da la curva da basa e finala',
+ set_reset:'Restaurar',set_back:'Enavos a las rundas',set_saved:'Ils parameters vegnan memorisads en quest navigatur.',
+ imp_note:'L’impressum è obligatoric per tudestg.'},
+en:{set_pcolor:'Aircraft colour',set_ptype:'Aircraft type',pt_low:'Low-wing',pt_high:'High-wing',lang:'English',menu:'Menu',nav_circ:'Circuits',nav_set:'Settings',nav_imp:'Legal notice',airport:'Airfield',search:'Name or ICAO',
+ lyImg:'Aerial',lyMap:'National map',lyRel:'Relief',exag:'Exaggeration',speed:'Speed',pause:'Pause',play:'Play',chase:'Follow aircraft',home:'Reset view',
+ alt:'Altitude',agl:'above ground',tdp:'to touchdown',circuit:'Circuit',base:'Base turn',final:'Final turn',
+ profile:'Elevation profile along the circuit',hmax:'Highest terrain ±1 km',hclr:'Min. clearance in circuit',
+ k_path:'Flight path',k_ground:'Terrain below flight path',k_side:'highest terrain ±1 km to the side',animated:'animated',compare:'for comparison',
+ freqs:'Frequencies',website:'Airfield website',touchdown:'Touchdown point',downwindTag:'Downwind',
+ src:'Circuits, altitudes and reporting points from the airfield VACs (skyguide), runway data from AIP and OurAirports. Aerial imagery, national map and elevation data © swisstopo. Turn radii schematic. Not for navigation.',
+ approach:'Approach',note_lang:'Note in German: ',
+ legs:{Startlauf:'Take-off roll',Steigflug:'Upwind',Querabflug:'Crosswind',Gegenanflug:'Downwind',Queranflug:'Base',Endanflug:'Final',Ausrollen:'Rollout'},
+ short:{Startlauf:'Take-off',Steigflug:'Take-off',Querabflug:'Crosswind',Gegenanflug:'Downwind',Queranflug:'Base',Endanflug:'Final',Ausrollen:''},
+ side:{N:'north',NE:'northeast',E:'east',SE:'southeast',S:'south',SW:'southwest',W:'west',NW:'northwest'},hand:{L:'left-hand',R:'right-hand'},
+ var:{retract:'retractable gear',fixed:'fixed gear',single:'single-engine',multi:'multi-engine',inner:'inner',outer:'outer'},
+ sideCircuit:s=>s[0].toUpperCase()+s.slice(1)+' circuit',
+ tiles:(n,a,b)=>`${n}: ${a} of ${b} tiles loaded`,tilesMissing:(n,a,b)=>`${n}: ${a} of ${b} tiles missing`,
+ tilesFail:n=>`${n} couldn’t be loaded. Showing relief instead. Check your internet connection, or whether the browser blocks the map service.`,
+ demLoad:'Loading terrain …',demFail:'Elevation data couldn’t be loaded. Terrain shown flat at field elevation.',glErr:'The 3D view couldn’t be loaded.',
+ set_title:'Settings',set_color:'Circuit colour',set_width:'Circuit thickness',set_gs:'Approach angle',set_turns:'Show base and final turn altitudes',
+ set_reset:'Reset',set_back:'Back to circuits',set_saved:'Settings are saved in this browser.',
+ imp_note:'The German version of the legal notice is binding.'}
+};
+
+// Disclaimer texts (all languages). Verification status per airfield: AIRPORTS[k].verified = {date:'YYYY-MM-DD', by:'…'} once the airfield has checked its circuit.
+Object.assign(I18N.de,{disc_close:'Hinweis schliessen',disc_title:'Nur zur Illustration',disc_body:'Diese Darstellung dient ausschliesslich der Veranschaulichung. Es gelten allein die offiziell publizierten Informationen (AIP, VFR Manual / VAC, NOTAM) und die Weisungen des Flugplatzes. Volten, Höhen und Kurvenradien sind vereinfacht und können veraltet oder fehlerhaft sein. Nicht für die Navigation oder die Flugvorbereitung verwenden.',disc_ok:'Verstanden',disc_stamp:'Illustration · nicht für die Navigation',ver_no:'Noch nicht vom Flugplatz geprüft',ver_yes:d=>'Vom Flugplatz geprüft am '+d});
+Object.assign(I18N.fr,{disc_close:'Fermer l’avertissement',disc_title:'À titre d’illustration uniquement',disc_body:'Cette représentation sert uniquement d’illustration. Seules font foi les informations publiées officiellement (AIP, VFR Manual / VAC, NOTAM) et les instructions de l’aérodrome. Les tours de piste, altitudes et rayons de virage sont simplifiés et peuvent être obsolètes ou erronés. Ne pas utiliser pour la navigation ni pour la préparation du vol.',disc_ok:'Compris',disc_stamp:'Illustration · pas pour la navigation',ver_no:'Pas encore vérifié par l’aérodrome',ver_yes:d=>'Vérifié par l’aérodrome le '+d});
+Object.assign(I18N.it,{disc_close:'Chiudi l’avviso',disc_title:'Solo a scopo illustrativo',disc_body:'Questa rappresentazione ha scopo puramente illustrativo. Fanno fede esclusivamente le informazioni pubblicate ufficialmente (AIP, VFR Manual / VAC, NOTAM) e le istruzioni dell’aerodromo. Circuiti, altitudini e raggi di virata sono semplificati e possono essere obsoleti o errati. Non utilizzare per la navigazione né per la preparazione del volo.',disc_ok:'Ho capito',disc_stamp:'Illustrazione · non per la navigazione',ver_no:'Non ancora verificato dall’aerodromo',ver_yes:d=>'Verificato dall’aerodromo il '+d});
+Object.assign(I18N.rm,{disc_close:'Serrar l’avis',disc_title:'Mo per illustraziun',disc_body:'Questa represchentaziun serva mo per illustrar. Valaivlas èn exclusivamain las infurmaziuns publitgadas uffizialmain (AIP, VFR Manual / VAC, NOTAM) e las instrucziuns da l’aerodrom. Rundas, autezzas e radis da curva èn simplifitgads e pon esser antiquads u sbagliads. Betg duvrar per la navigaziun u per la preparaziun dal sgol.',disc_ok:'Chapì',disc_stamp:'Illustraziun · betg per la navigaziun',ver_no:'Anc betg controllà da l’aerodrom',ver_yes:d=>'Controllà da l’aerodrom ils '+d});
+Object.assign(I18N.en,{disc_close:'Close notice',disc_title:'For illustration only',disc_body:'This view is for illustration only. Only the officially published information (AIP, VFR Manual / VAC, NOTAM) and the airfield’s instructions apply. Circuits, altitudes and turn radii are simplified and may be outdated or wrong. Do not use for navigation or flight preparation.',disc_ok:'I understand',disc_stamp:'Illustration · not for navigation',ver_no:'Not yet verified by the airfield',ver_yes:d=>'Verified by the airfield on '+d});
+
+(function(){
+const $=id=>document.getElementById(id);
+const DEFSET={color:'#1673BD',width:1,gs:5,turns:true,pcolor:'#1f5fa8',ptype:'low'};
+let SET=Object.assign({},DEFSET);try{Object.assign(SET,JSON.parse(localStorage.getItem('vfr3d.settings')||'{}'));}catch(e){}
+const QS=new URLSearchParams(location.search),EMBED=QS.get('embed')==='1';
+let LANG='de';try{LANG=QS.get('lang')||localStorage.getItem('vfr3d.lang')||(navigator.language||'de').slice(0,2).toLowerCase();}catch(e){}
+if(!I18N[LANG])LANG=QS.get('lang')?'en':'de';
+if(EMBED)document.documentElement.classList.add('embed');
+const TR=()=>I18N[LANG];
+const saveSet=()=>{try{localStorage.setItem('vfr3d.settings',JSON.stringify(SET));}catch(e){}};
+document.documentElement.style.setProperty('--route',SET.color);
+if(!window.THREE){$('err').hidden=false;return;}
+const box=$('gl');
+const R=new THREE.WebGLRenderer({antialias:true,alpha:true,logarithmicDepthBuffer:true});
+R.setPixelRatio(Math.min(devicePixelRatio,2));box.appendChild(R.domElement);
+R.outputEncoding=THREE.sRGBEncoding;
+const MAXTEX=Math.min(R.capabilities.maxTextureSize,4096);
+const SMALL=Math.min(screen.width,screen.height)<700;
+const S=new THREE.Scene();
+const C=new THREE.PerspectiveCamera(42,1,2,120000);
+const O=new THREE.OrbitControls(C,R.domElement);
+O.enableDamping=true;O.maxPolarAngle=1.48;O.minDistance=120;O.maxDistance=40000;O.screenSpacePanning=false;
+S.add(new THREE.HemisphereLight(0xffffff,0x8899aa,1.0));
+const sun=new THREE.DirectionalLight(0xffffff,0.5);sun.position.set(-4000,8000,3000);S.add(sun);
+const V=(e,n,y)=>new THREE.Vector3(e,y||0,-n);
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const ORDER=Object.keys(AIRPORTS).sort((a,b)=>AIRPORTS[a].name.localeCompare(AIRPORTS[b].name,'de'));
+
+/* ---------- geodesy ---------- */
+function lv2wgs(E,N){const y=(E-2600000)/1e6,x=(N-1200000)/1e6;
+  const l=2.6779094+4.728982*y+0.791484*y*x+0.1306*y*x*x-0.0436*y*y*y;
+  const p=16.9023892+3.238272*x-0.270978*y*y-0.002528*x*x-0.0447*y*y*x-0.0140*x*x*x;return [l*100/36,p*100/36];}
+function wgs2lv(lon,lat){const p=(lat*3600-169028.66)/10000,l=(lon*3600-26782.5)/10000;
+  return [2600072.37+211455.93*l-10938.51*l*p-0.36*l*p*p-44.54*l*l*l,1200147.07+308807.95*p+3745.25*l*l+76.63*p*p-194.56*l*l*p+119.79*p*p*p];}
+const merc=(lon,lat,z)=>{const N=2**z,r=lat*Math.PI/180;return [(lon+180)/360*N,(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*N];};
+const unmerc=(tx,ty,z)=>{const N=2**z,lon=tx/N*360-180,n=Math.PI-2*Math.PI*ty/N;return [lon,180/Math.PI*Math.atan(Math.sinh(n))];};
+
+/* ---------- state ---------- */
+let LBL=1,A=null,AK='LSZB',CIRC=null,EX=2,E0=0,N0=0,ZREF=0,ELEVFT=0,DEM=null,DE=0;
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let curve,samples,sTDP,sTot,TURNS=[],t=0,playing=true,chase=false,chaseFree=false,FY=0,TOD=null;
+const apGrp=new THREE.Group(),grp=new THREE.Group(),rwyGrp=new THREE.Group();S.add(apGrp,grp,rwyGrp);
+let terrain=null,TG=null,FR=null;
+
+function elevAbs(E,N){
+  let fx=(E-DEM.e0)/DE,fy=(N-DEM.n0)/DEM.dn;const nr=DEM.rows.length,nc=DEM.rows[0].length;
+  fx=Math.max(0,Math.min(nc-1.001,fx));fy=Math.max(0,Math.min(nr-1.001,fy));
+  const i=Math.floor(fy),j=Math.floor(fx),a=fy-i,b=fx-j,r=DEM.rows;
+  return (r[i][j]*(1-b)+r[i][j+1]*b)*(1-a)+(r[i+1][j]*(1-b)+r[i+1][j+1]*b)*a;}
+const elev=(e,n)=>elevAbs(e+E0,n+N0);
+const tY=(e,n)=>(elev(e,n)-ZREF)*EX;
+const loc=p=>[p[0]-E0,p[1]-N0];
+
+/* ---------- runway helpers ---------- */
+let U=[0,1],LEFT=[-1,0],RL=0,RSTART=[0,0];
+function rwyFrame(){const b=A.rwy.brg*Math.PI/180;U=[Math.sin(b),Math.cos(b)];LEFT=[-U[1],U[0]];RL=A.rwy.len;RSTART=[-U[0]*RL/2,-U[1]*RL/2];}
+const onLo=d=>[RSTART[0]+U[0]*d,RSTART[1]+U[1]*d];
+function landPos(land,s){return land===A.rwy.lo?onLo(s):onLo(RL-s);}
+function snapCL(p){const d=(p[0]-RSTART[0])*U[0]+(p[1]-RSTART[1])*U[1];return onLo(d);}
+
+/* ---------- labels ---------- */
+function makeTag(txt){
+  const F='600 40px "Barlow Condensed", Arial Narrow, sans-serif';const c=document.createElement('canvas');let g=c.getContext('2d');g.font=F;
+  const cw=Math.ceil(g.measureText(txt).width)+44;c.width=cw;c.height=88;g=c.getContext('2d');
+  g.fillStyle='rgba(20,24,28,0.88)';g.beginPath();g.roundRect?g.roundRect(4,8,cw-8,72,10):g.rect(4,8,cw-8,72);g.fill();
+  g.fillStyle='#ffffff';g.font=F;g.textAlign='center';g.fillText(txt,cw/2,58);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));sp.scale.set(318*cw/88*LBL,318*LBL,1);sp.renderOrder=10;return sp;}
+function makeName(txt,big){
+  const F=(big?'600 44px ':'500 36px ')+'"Barlow", system-ui, sans-serif';const c=document.createElement('canvas');let g=c.getContext('2d');g.font=F;
+  const cw=Math.ceil(g.measureText(txt).width)+28,ch=big?70:60;c.width=cw;c.height=ch;g=c.getContext('2d');
+  g.fillStyle='rgba(255,255,255,0.92)';g.beginPath();g.roundRect?g.roundRect(2,4,cw-4,ch-8,8):g.rect(2,4,cw-4,ch-8);g.fill();
+  g.fillStyle='#1b2026';g.font=F;g.textAlign='center';g.textBaseline='middle';g.fillText(txt,cw/2,ch/2+1);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));const k=(big?4.2:3.6)*LBL;sp.scale.set(cw*k,ch*k,1);sp.renderOrder=9;return sp;}
+function clearGroup(g){g.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){if(o.material.map)o.material.map.dispose();o.material.dispose();}});g.clear();}
+
+/* ---------- ground imagery ---------- */
+const LAYERS={img:{name:'Luftbild',max:19,url:(z,x,y)=>`https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/${z}/${x}/${y}.jpeg`},
+              map:{name:'Landeskarte',max:18,url:(z,x,y)=>`https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/${z}/${x}/${y}.jpeg`},
+              rel:{name:'Relief',url:null}};
+let layerKey='img',layerToken=0;const tileCache=new Map();
+const chip=$('tiles');
+const lyName=k=>TR()[{img:'lyImg',map:'lyMap',rel:'lyRel'}[k]];
+function setChip(t,warn){chip.textContent=t;chip.classList.toggle('warn',!!warn);chip.hidden=!t;}
+
+/* a "layer" is a textured mesh over a local bbox at one zoom level */
+function tileRange(bb,z){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const [e,n] of [[bb[0],bb[1]],[bb[2],bb[1]],[bb[0],bb[3]],[bb[2],bb[3]],[(bb[0]+bb[2])/2,bb[1]],[(bb[0]+bb[2])/2,bb[3]]]){
+    const [lo,la]=lv2wgs(e+E0,n+N0),[x,y]=merc(lo,la,z);x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y);}
+  return {z,X0:Math.floor(x0),Y0:Math.floor(y0),X1:Math.floor(x1),Y1:Math.floor(y1)};}
+function pickZoom(bb,zmax,limit){for(let z=zmax;z>=10;z--){const r=tileRange(bb,z);if((r.X1-r.X0+1)*256<=limit&&(r.Y1-r.Y0+1)*256<=limit)return r;}return tileRange(bb,10);}
+function buildMesh(bb,seg,r,offset){
+  const w=bb[2]-bb[0],h=bb[3]-bb[1];const g=new THREE.PlaneGeometry(w,h,seg[0],seg[1]);g.rotateX(-Math.PI/2);g.translate((bb[0]+bb[2])/2,0,-(bb[1]+bb[3])/2);
+  const NX=r.X1-r.X0+1,NY=r.Y1-r.Y0+1,a=g.attributes.position.array,uv=g.attributes.uv.array;
+  for(let k=0,m=0;k<a.length;k+=3,m+=2){const [lo,la]=lv2wgs(a[k]+E0,-a[k+2]+N0),[x,y]=merc(lo,la,r.z);uv[m]=(x-r.X0)/NX;uv[m+1]=1-(y-r.Y0)/NY;}
+  g.attributes.uv.needsUpdate=true;
+  const cv=document.createElement('canvas');cv.width=NX*256;cv.height=NY*256;
+  const tex=new THREE.CanvasTexture(cv);tex.anisotropy=R.capabilities.getMaxAnisotropy();tex.encoding=THREE.sRGBEncoding;
+  const mat=new THREE.MeshLambertMaterial({map:tex});
+  if(offset){mat.polygonOffset=true;mat.polygonOffsetFactor=-offset;mat.polygonOffsetUnits=-offset*4;}
+  const mesh=new THREE.Mesh(g,mat);mesh.renderOrder=offset||0;
+  return {bb,r,g,cv,ctx:cv.getContext('2d'),tex,mesh,NX,NY};}
+function shapeMesh(L,lift){const a=L.g.attributes.position.array;for(let k=0;k<a.length;k+=3)a[k+1]=tY(a[k],-a[k+2])+(lift||0);L.g.attributes.position.needsUpdate=true;L.g.computeVertexNormals();}
+let BASE=null,PATCHES=[];const DIRTY=new Set();let lastFlush=0;
+function flushTex(now,force){if(!DIRTY.size||(!force&&now-lastFlush<350))return;for(const L of [...DIRTY]){if(L.mesh.visible){L.tex.needsUpdate=true;DIRTY.delete(L);}}lastFlush=now;}
+function makeRelief(L){
+  const W=512,H=512,c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d'),im=g.createImageData(W,H);
+  const lx=-0.6,ly=0.6,lz=0.55,LN=Math.hypot(lx,ly,lz);
+  for(let j=0;j<H;j++)for(let i=0;i<W;i++){
+    const [lo,la]=unmerc(L.r.X0+(i+.5)/W*L.NX,L.r.Y0+(j+.5)/H*L.NY,L.r.z),[E,N]=wgs2lv(lo,la);
+    const z=elevAbs(E,N),dx=(elevAbs(E+60,N)-elevAbs(E-60,N))/120*2.2,dy=(elevAbs(E,N+60)-elevAbs(E,N-60))/120*2.2;
+    const Ln=Math.hypot(dx,dy,1),sh=Math.max(0,(-dx*lx-dy*ly+lz)/Ln/LN);
+    const tt=Math.max(0,Math.min(1,(z-ZREF+60)/600));
+    const r=150+tt*95,gg=178+tt*50,b=120+tt*60,f=0.45+0.75*sh,o=(j*W+i)*4;
+    im.data[o]=Math.min(255,r*f);im.data[o+1]=Math.min(255,gg*f);im.data[o+2]=Math.min(255,b*f);im.data[o+3]=255;}
+  g.putImageData(im,0,0);return c;}
+let reliefCanvas=null;
+function loadLayer(key){
+  layerKey=key;const tok=++layerToken;
+  for(const k of ['img','map','rel'])$({img:'lyImg',map:'lyMap',rel:'lyRel'}[k]).setAttribute('aria-pressed',k===key);
+  BASE.ctx.drawImage(reliefCanvas,0,0,BASE.cv.width,BASE.cv.height);BASE.tex.needsUpdate=true;BASE.hasImg=false;
+  for(const P of PATCHES)P.mesh.visible=false;
+  const Ly=LAYERS[key];if(!Ly.url){setChip('');return;}
+  const jobs=[];
+  const add=(L,isBase)=>{const st={L,ok:0,bad:0,n:0,isBase};
+    const cx=(L.r.X0+L.r.X1)/2,cy=(L.r.Y0+L.r.Y1)/2,list=[];
+    for(let y=L.r.Y0;y<=L.r.Y1;y++)for(let x=L.r.X0;x<=L.r.X1;x++)list.push([x,y,(x-cx)**2+(y-cy)**2]);
+    list.sort((a,b)=>a[2]-b[2]);st.n=list.length;for(const [x,y] of list)jobs.push([st,x,y]);return st;};
+  const sts=[add(BASE,true),...PATCHES.filter(P=>P.r.z<=Ly.max).map(P=>add(P,false))];
+  const total=jobs.length;let done=0,okAll=0;
+  const upd=()=>{if(tok!==layerToken)return;
+    if(done<total)setChip(TR().tiles(lyName(key),okAll,total));
+    else if(okAll===total)setChip('');
+    else if(sts[0].ok===0)setChip(TR().tilesFail(lyName(key)),true);
+    else setChip(TR().tilesMissing(lyName(key),total-okAll,total),true);};
+  const finishPatch=st=>{if(st.isBase||st.ok+st.bad<st.n)return;if(st.ok>0){st.L.tex.needsUpdate=true;DIRTY.delete(st.L);st.L.mesh.visible=true;}};
+  const prefill=L=>{const s=2**(L.r.z-BASE.r.z),tw=BASE.cv.width/BASE.NX;
+    L.ctx.drawImage(BASE.cv,(L.r.X0/s-BASE.r.X0)*tw,(L.r.Y0/s-BASE.r.Y0)*tw,L.NX/s*tw,L.NY/s*tw,0,0,L.cv.width,L.cv.height);};
+  let qi=0,active=0;const MAXC=8;
+  const pump=()=>{while(active<MAXC&&qi<jobs.length){const [st,x,y]=jobs[qi++];active++;
+      const L=st.L,ck=key+'/'+L.r.z+'/'+x+'/'+y;
+      const draw=img=>{if(tok!==layerToken)return;
+        if(!st.isBase&&st.ok===0)prefill(L);
+        L.ctx.drawImage(img,(x-L.r.X0)*256,(y-L.r.Y0)*256,256,256);if(st.isBase)L.hasImg=true;DIRTY.add(L);};
+      const fin=ok=>{active--;done++;if(ok){st.ok++;okAll++;}else st.bad++;
+        if(tok!==layerToken)return;
+        if(!ok&&okAll===0&&done>=12){layerToken++;setChip(TR().tilesFail(lyName(key)),true);return;}
+        finishPatch(st);upd();pump();};
+      if(tileCache.has(ck)){draw(tileCache.get(ck));fin(true);continue;}
+      const img=new Image();img.crossOrigin='anonymous';
+      img.onload=()=>{if(tileCache.size>2500)tileCache.delete(tileCache.keys().next().value);tileCache.set(ck,img);draw(img);fin(true);};
+      img.onerror=()=>fin(false);img.src=Ly.url(L.r.z,x,y);}};
+  upd();pump();
+}
+
+/* ---------- airport build ---------- */
+function circuitBBox(){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const c of A.circuits)for(const p of c.pts){const [e,n]=loc(p[0]);x0=Math.min(x0,e);y0=Math.min(y0,n);x1=Math.max(x1,e);y1=Math.max(y1,n);}
+  return [x0,y0,x1,y1];}
+function buildTerrain(){
+  if(terrain){S.remove(terrain);terrain.geometry.dispose();terrain.material.map.dispose();terrain.material.dispose();}
+  for(const P of PATCHES){S.remove(P.mesh);P.g.dispose();P.tex.dispose();P.mesh.material.dispose();}PATCHES=[];
+  FR=[A.frame[0]-E0,A.frame[1]-N0,A.frame[2]-E0,A.frame[3]-N0];
+  BASE=buildMesh(FR,[150,150],pickZoom(FR,15,SMALL?2048:Math.min(MAXTEX,4096)),0);terrain=BASE.mesh;S.add(terrain);
+  reliefCanvas=makeRelief(BASE);
+  const cb=circuitBBox(),m=500,clip=b=>[Math.max(b[0],FR[0]),Math.max(b[1],FR[1]),Math.min(b[2],FR[2]),Math.min(b[3],FR[3])];
+  const L1=clip([cb[0]-m,cb[1]-m,cb[2]+m,cb[3]+m]);
+  const zL1=SMALL?15:16,limit=SMALL?2048:Math.min(MAXTEX,4096);
+  const span=4000*(zL1===16?1:2);const nx=Math.max(1,Math.ceil((L1[2]-L1[0])/span)),ny=Math.max(1,Math.ceil((L1[3]-L1[1])/span));
+  const dx=(L1[2]-L1[0])/nx,dy=(L1[3]-L1[1])/ny;
+  for(let i=0;i<nx;i++)for(let j=0;j<ny;j++){const bb=[L1[0]+i*dx,L1[1]+j*dy,L1[0]+(i+1)*dx,L1[1]+(j+1)*dy];
+    const P=buildMesh(bb,[Math.ceil(dx/50),Math.ceil(dy/50)],pickZoom(bb,zL1,limit),1);P.mesh.visible=false;PATCHES.push(P);S.add(P.mesh);}
+  const hr=Math.max(1300,RL/2+800),L2=clip([-hr,-hr,hr,hr]);
+  const P2=buildMesh(L2,[Math.ceil((L2[2]-L2[0])/40),Math.ceil((L2[3]-L2[1])/40)],pickZoom(L2,SMALL?16:17,limit),2);P2.mesh.visible=false;PATCHES.push(P2);S.add(P2.mesh);
+  shapeAll();
+}
+function shapeAll(){shapeMesh(BASE,0);for(const P of PATCHES)shapeMesh(P,0);}
+function slab(d0,d1,w,col,y,off){const L=d1-d0,m=new THREE.Mesh(new THREE.BoxGeometry(w,1,L),new THREE.MeshBasicMaterial({color:col}));
+  const c=onLo((d0+d1)/2);const o=off||0;m.position.copy(V(c[0]+LEFT[0]*o,c[1]+LEFT[1]*o,y));m.rotation.y=Math.atan2(U[0],-U[1]);rwyGrp.add(m);return m;}
+function drawRunway(){
+  clearGroup(rwyGrp);const base=3*EX+4;
+  if(A.grass)slab((RL-A.grass.len)/2,(RL+A.grass.len)/2,A.grass.wid,0x6f8f4e,base+2,A.grass.off);
+  slab(0,RL,Math.max(A.rwy.wid+20,50),0x2a2f35,base+4);
+  for(const [k,d] of Object.entries(A.rwy.thr)){if(!d)continue;const s=k===A.rwy.lo?d:RL-d;slab(s-3,s+3,Math.max(A.rwy.wid+20,50),0xffffff,base+5);}
+  for(const [lab,d] of A.marks){const c=onLo(d);for(const sgn of [1,-1]){const st=[c[0]+LEFT[0]*sgn*20,c[1]+LEFT[1]*sgn*20],en=[c[0]+LEFT[0]*sgn*170,c[1]+LEFT[1]*sgn*170],mm=[(st[0]+en[0])/2,(st[1]+en[1])/2];
+      if(sgn===-1&&A.icao==='LSZB')continue;
+      const b=new THREE.Mesh(new THREE.BoxGeometry(14,1,150),new THREE.MeshBasicMaterial({color:0x5d6670}));b.position.copy(V(mm[0],mm[1],base+3));b.rotation.y=Math.atan2(LEFT[0],-LEFT[1]);rwyGrp.add(b);
+      const nm=makeName(lab);nm.scale.multiplyScalar(0.7);nm.position.copy(V(en[0],en[1],base+90));rwyGrp.add(nm);}}
+  for(const [k,v] of [[A.rwy.lo,0],[A.rwy.hi,RL]]){const c=onLo(v<1?-60:RL+60);const nm=makeName(k,true);nm.scale.multiplyScalar(0.6);nm.position.copy(V(c[0],c[1],base+60));rwyGrp.add(nm);}
+}
+function drawAirportOverlays(){
+  clearGroup(apGrp);
+  for(const [nm,p,big] of A.places){const [e,n]=loc(p);const sp=makeName(nm,!!big);sp.position.copy(V(e,n,tY(e,n)+140*LBL));apGrp.add(sp);}
+  for(const [nm,p] of A.peaks){const [e,n]=loc(p);const sp=makeTag(nm);sp.scale.multiplyScalar(0.85);sp.position.copy(V(e,n,tY(e,n)+320*LBL));apGrp.add(sp);}
+  for(const [nm,p] of A.rps){const [e,n]=loc(p),g0=tY(e,n),hgt=260*EX*LBL;
+    const pole=new THREE.Mesh(new THREE.CylinderGeometry(9,9,hgt,6),new THREE.MeshBasicMaterial({color:0x534ab7}));pole.position.copy(V(e,n,g0+hgt/2));apGrp.add(pole);
+    const top=new THREE.Mesh(new THREE.SphereGeometry(55,16,12),new THREE.MeshBasicMaterial({color:0x534ab7}));top.position.copy(V(e,n,g0+hgt));apGrp.add(top);
+    const tg=makeTag(nm);tg.scale.multiplyScalar(0.75);tg.position.copy(V(e,n,g0+hgt+240*LBL));apGrp.add(tg);}
+  if(A.ring){const [ce,cn]=loc(A.ring.c),pts=[];for(let k=0;k<=72;k++){const a=k/72*Math.PI*2,e=ce+Math.cos(a)*A.ring.r,n=cn+Math.sin(a)*A.ring.r;pts.push(V(e,n,tY(e,n)+8));}
+    apGrp.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts,true),144,10,6,true),new THREE.MeshBasicMaterial({color:0x534ab7})));}
+}
+
+/* ---------- circuit ---------- */
+let GSTAN=Math.tan(SET.gs*Math.PI/180);const CLIMB=0.09,ROLL=320,RAD=200;
+function flatPath(c){
+  const out=[];const P=c.map(x=>x[0]);
+  for(let i=0;i<P.length;i++){
+    const leg=c[i][1]||c[i-1][1];
+    if(i===0||i===P.length-1){out.push([P[i][0],P[i][1],leg]);continue;}
+    const a=P[i-1],b=P[i],n=P[i+1];
+    const v1=[b[0]-a[0],b[1]-a[1]],v2=[n[0]-b[0],n[1]-b[1]];
+    const l1=Math.hypot(...v1),l2=Math.hypot(...v2);if(l1<1||l2<1){out.push([b[0],b[1],leg]);continue;}
+    const u1=[v1[0]/l1,v1[1]/l1],u2=[v2[0]/l2,v2[1]/l2];
+    const ang=Math.acos(Math.max(-1,Math.min(1,u1[0]*u2[0]+u1[1]*u2[1])));
+    if(ang<0.05){out.push([b[0],b[1],leg]);continue;}
+    const tl=Math.min(RAD*Math.tan(ang/2),l1*0.45,l2*0.45),r=tl/Math.tan(ang/2);
+    const pA=[b[0]-u1[0]*tl,b[1]-u1[1]*tl],pB=[b[0]+u2[0]*tl,b[1]+u2[1]*tl];
+    const cr=u1[0]*u2[1]-u1[1]*u2[0],nrm=cr>0?[-u1[1],u1[0]]:[u1[1],-u1[0]];
+    const cc=[pA[0]+nrm[0]*r,pA[1]+nrm[1]*r];
+    const s0=Math.atan2(pA[1]-cc[1],pA[0]-cc[0]),s1=Math.atan2(pB[1]-cc[1],pB[0]-cc[0]);
+    let da=s1-s0;while(da>Math.PI)da-=2*Math.PI;while(da<-Math.PI)da+=2*Math.PI;
+    for(let k=0;k<=12;k++){const tt=s0+da*k/12;out.push([cc[0]+r*Math.cos(tt),cc[1]+r*Math.sin(tt),k<6?c[i-1][1]:leg]);}
+  }
+  const dense=[];
+  for(let i=0;i<out.length-1;i++){const a=out[i],b=out[i+1],L=Math.hypot(b[0]-a[0],b[1]-a[1]),n=Math.max(1,Math.ceil(L/20));
+    for(let k=0;k<n;k++)dense.push([a[0]+(b[0]-a[0])*k/n,a[1]+(b[1]-a[1])*k/n,a[2]]);}
+  dense.push(out[out.length-1]);
+  let s=0;dense[0].s=0;for(let i=1;i<dense.length;i++){s+=Math.hypot(dense[i][0]-dense[i-1][0],dense[i][1]-dense[i-1][1]);dense[i].s=s;}
+  return dense;}
+const accent=()=>css('--route')||'#1673BD';
+function circAGL(c){return ((c||CIRC).alt-ELEVFT)/3.281;}
+const FLARE=6;/* m AGL: Abfangen beginnt ca. 20 ft über Grund */
+function glideAt(u){if(u<=0)return 0;const u1=2*FLARE/GSTAN;return u>=u1?(u-u1/2)*GSTAN:GSTAN/(2*u1)*u*u;}
+function flareAmt(s){const u=sTDP-s,u1=2*FLARE/GSTAN;if(u>u1)return 0;if(u>=0)return 1-u/u1;return Math.max(0,1+u/120);}
+function altAt(s){const sl=s-ROLL;const up=sl>0?sl*CLIMB:0;const dn=glideAt(sTDP-s);return Math.max(0,Math.min(circAGL(),up,dn));}
+function corners(cc){
+  const c=cc||CIRC,roll=Math.min(c.tdp+380,RL-30);
+  const list=[[landPos(c.land,c.s0),'Startlauf']];
+  for(const [p,leg,cl] of c.pts){let q=loc(p);if(cl)q=snapCL(q);list.push([q,leg]);}
+  list.push([landPos(c.land,c.tdp),'Ausrollen']);list.push([landPos(c.land,Math.max(roll,c.tdp+60)),'']);
+  return list;}
+function buildCircuit(){
+  clearGroup(grp);
+  const d=flatPath(corners());
+  const tdpIdx=d.findIndex(p=>p[2]==='Ausrollen');sTDP=d[tdpIdx].s;sTot=d[d.length-1].s;
+  samples=d.map(p=>({x:p[0],n:p[1],leg:p[2],s:p.s,a:altAt(p.s)}));
+  FY=3*EX+6;for(const p of samples)p.g=elev(p.x,p.n);
+  const pts=samples.map(p=>V(p.x,p.n,p.a*EX+FY));
+  curve=new THREE.CatmullRomCurve3(pts,false,'centripetal',0.5);
+  const col=new THREE.Color(accent());
+  grp.add(new THREE.Mesh(new THREE.TubeGeometry(curve,1400,30*SET.width,10,false),new THREE.MeshBasicMaterial({color:col})));
+  grp.add(new THREE.Mesh(new THREE.TubeGeometry(curve,1400,30*SET.width+15,10,false),new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.BackSide})));
+  const pos=[],gpos=[];pts.forEach((p,k)=>{const g=(samples[k].g-ZREF)*EX;pos.push(p.x,p.y,p.z,p.x,g,p.z);gpos.push(p.x,g+4,p.z);});
+  const idx=[];for(let i=0;i<pts.length-1;i++){const a=i*2;idx.push(a,a+1,a+2,a+1,a+3,a+2);}
+  const cg=new THREE.BufferGeometry();cg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));cg.setIndex(idx);
+  grp.add(new THREE.Mesh(cg,new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.22,side:THREE.DoubleSide,depthWrite:false})));
+  const gg=new THREE.BufferGeometry();gg.setAttribute('position',new THREE.Float32BufferAttribute(gpos,3));
+  grp.add(new THREE.Line(gg,new THREE.LineBasicMaterial({color:0x14181c})));
+  const ar=new THREE.ConeGeometry(60,160,12);ar.rotateX(Math.PI/2);
+  for(let s=500;s<sTDP-300;s+=800){const i=samples.findIndex(p=>p.s>=s);if(i<1||i>=pts.length-1)continue;
+    const m=new THREE.Mesh(ar,new THREE.MeshBasicMaterial({color:0xffffff}));m.position.copy(pts[i]);m.lookAt(pts[i+1]);grp.add(m);}
+  const mids=samples.filter(p=>p.leg==='Gegenanflug');const mm=mids[Math.floor(mids.length/2)]||samples[Math.floor(samples.length/2)];
+  const tag=makeTag(CIRC.alt+' ft · '+TR().downwindTag);tag.position.copy(V(mm.x,mm.n,circAGL()*EX+FY+430*LBL));grp.add(tag);
+  const tp=samples[tdpIdx];const tt=makeTag(TR().touchdown+(CIRC.tdpName?' · '+CIRC.tdpName:''));tt.position.copy(V(tp.x,tp.n,FY+260*LBL));tt.scale.multiplyScalar(0.8);grp.add(tt);
+  TURNS=[[TR().base,'Queranflug'],[TR().final,'Endanflug']].map(([lab,leg])=>{let i=samples.findIndex(p=>p.leg===leg);if(i<0)i=0;const p=samples[i];
+    return {i,lab,s:p.s,ft:Math.round((ELEVFT+p.a*3.281)/10)*10,agl:Math.round(p.a*3.281/10)*10};});
+  if(SET.turns)for(const T of TURNS){const P=pts[T.i];
+    const dot=new THREE.Mesh(new THREE.SphereGeometry(58,20,14),new THREE.MeshBasicMaterial({color:0xffffff}));dot.position.copy(P);grp.add(dot);
+    const ring=new THREE.Mesh(new THREE.SphereGeometry(40,20,14),new THREE.MeshBasicMaterial({color:col}));ring.position.copy(P);ring.renderOrder=1;grp.add(ring);
+    const g0=(samples[T.i].g-ZREF)*EX;const stem=new THREE.Mesh(new THREE.CylinderGeometry(6,6,Math.max(1,P.y-g0),6),new THREE.MeshBasicMaterial({color:0x14181c}));stem.position.set(P.x,(P.y+g0)/2,P.z);grp.add(stem);
+    const tg=makeTag(T.lab+' · '+T.ft+' ft');tg.position.set(P.x,P.y+300*LBL,P.z);grp.add(tg);}
+  // Top of Descent: where the glide path (approach angle) meets the circuit altitude – small floating diamond with the angle
+  TOD=null;{const u1=2*FLARE/GSTAN,u=circAGL()/GSTAN+u1/2,sT=sTDP-u;
+    if(sT>0){const i=samples.findIndex(p=>p.s>=sT);if(i>0&&i<pts.length){const P=pts[i];
+      const dg=new THREE.OctahedronGeometry(120*Math.max(.7,LBL),0);dg.scale(1,1.5,1);
+      const dm=new THREE.Mesh(dg,new THREE.MeshBasicMaterial({color:col}));
+      dm.add(new THREE.LineSegments(new THREE.EdgesGeometry(dg),new THREE.LineBasicMaterial({color:0xffffff})));
+      const y0=P.y+300*LBL;dm.position.set(P.x,y0,P.z);dm.renderOrder=8;grp.add(dm);
+      const tg=makeTag(SET.gs+'°');tg.scale.multiplyScalar(0.8);const ty=y0+300*LBL;tg.position.set(P.x,ty,P.z);grp.add(tg);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(4,4,Math.max(1,y0-P.y-150),6),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.55}));
+      stem.position.set(P.x,(y0-150+P.y)/2,P.z);grp.add(stem);
+      TOD={mesh:dm,tag:tg,y0,ty,s:sT};}}}
+  $('tbase').textContent=TURNS[0].ft+' ft ('+TURNS[0].agl+' AGL)';
+  $('tfin').textContent=TURNS[1].ft+' ft ('+TURNS[1].agl+' AGL)';
+  $('vol').textContent=circVol(CIRC);for(const e of document.querySelectorAll('.turnrow'))e.hidden=!SET.turns;
+  for(const b of $('circs').children)b.setAttribute('aria-pressed',b.dataset.id===CIRC.id);
+  const others=A.circuits.filter(c=>c.land===CIRC.land&&c.id!==CIRC.id);
+  for(const c of others)drawSecondary(c);
+  const lg=$('altLegend');lg.hidden=!others.length;
+  if(others.length){$('altName').textContent=others.map(cLabel).join(', ');}
+  $('priName').textContent=cLabel(CIRC);
+  drawProfile();
+}
+const SECOND=0xF28C28;
+function drawSecondary(c){
+  const d=flatPath(corners(c));const ti=d.findIndex(p=>p[2]==='Ausrollen'),sT=d[ti].s,agl=circAGL(c);
+  const alt=s=>{const sl=s-ROLL,up=sl>0?sl*CLIMB:0,dn=s<sT?(sT-s)*GSTAN:0;return Math.max(0,Math.min(agl,up,dn));};
+  const sm=d.map(p=>({x:p[0],n:p[1],leg:p[2],a:alt(p.s),g:elev(p[0],p[1])}));
+  const pts=sm.map(p=>V(p.x,p.n,p.a*EX+FY));const cv=new THREE.CatmullRomCurve3(pts,false,'centripetal',0.5);
+  grp.add(new THREE.Mesh(new THREE.TubeGeometry(cv,1200,22*SET.width,8,false),new THREE.MeshBasicMaterial({color:SECOND})));
+  grp.add(new THREE.Mesh(new THREE.TubeGeometry(cv,1200,22*SET.width+12,8,false),new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.BackSide})));
+  const pos=[],gpos=[];pts.forEach((p,k)=>{const g=(sm[k].g-ZREF)*EX;pos.push(p.x,p.y,p.z,p.x,g,p.z);gpos.push(p.x,g+4,p.z);});
+  const idx=[];for(let i=0;i<pts.length-1;i++){const a=i*2;idx.push(a,a+1,a+2,a+1,a+3,a+2);}
+  const cg=new THREE.BufferGeometry();cg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));cg.setIndex(idx);
+  grp.add(new THREE.Mesh(cg,new THREE.MeshBasicMaterial({color:SECOND,transparent:true,opacity:0.14,side:THREE.DoubleSide,depthWrite:false})));
+  const ar=new THREE.ConeGeometry(50,130,12);ar.rotateX(Math.PI/2);let acc=0;
+  for(let i=1;i<pts.length-1;i++){acc+=pts[i].distanceTo(pts[i-1]);if(acc>900&&sm[i].leg!=='Endanflug'){acc=0;const m=new THREE.Mesh(ar,new THREE.MeshBasicMaterial({color:0xffffff}));m.position.copy(pts[i]);m.lookAt(pts[i+1]);grp.add(m);}}
+  const dw=sm.filter(p=>p.leg==='Gegenanflug'),mm=dw[Math.floor(dw.length/2)]||sm[Math.floor(sm.length/2)];
+  const tag=makeTag(cName(c)+' · '+c.alt+' ft');tag.material.color.set(0xcfe6ff);tag.position.copy(V(mm.x,mm.n,agl*EX+FY+430*LBL));grp.add(tag);
+}
+
+/* ---------- profile ---------- */
+let PX=null;const pf=$('pf'),pc=$('pc');
+const SIDEN=c=>TR().side[c.side]||'';
+function cLabel(c){return `${c.land} · ${SIDEN(c)} ${c.alt} ft`+(c.var?' · '+TR().var[c.var]:'');}
+function cName(c){return c.var?TR().var[c.var]:TR().sideCircuit(SIDEN(c));}
+function circVol(c){return TR().hand[c.hand]+' · '+SIDEN(c);}
+function drawProfile(){
+  const w=pf.clientWidth,h=pf.clientHeight,dpr=Math.min(devicePixelRatio,2);if(!w||!h||!samples)return;
+  for(const c of [pf,pc]){c.width=w*dpr;c.height=h*dpr;}
+  const g=pf.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
+  const ft=m=>m*3.281;const side=[];
+  for(let k=0;k<samples.length;k++){const p=samples[k],q=samples[Math.min(k+1,samples.length-1)],o=samples[Math.max(k-1,0)];
+    let dx=q.x-o.x,dn=q.n-o.n;const L=Math.hypot(dx,dn)||1;dx/=L;dn/=L;let m=p.g;
+    for(const off of [-1000,-500,500,1000])m=Math.max(m,elev(p.x-dn*off,p.n+dx*off));side.push(m);}
+  const fly=samples.map(p=>ELEVFT+ft(p.a));const hiSide=Math.max(...side.map(ft));
+  const ymin=Math.floor((Math.min(...samples.map(p=>ft(p.g)))-200)/500)*500,ymax=Math.ceil((Math.max(CIRC.alt,hiSide)+300)/500)*500;
+  const L=46,Rm=12,T=20,B=20,W=w-L-Rm,H=h-T-B,sx=s=>L+s/sTot*W,sy=v=>T+H-(v-ymin)/(ymax-ymin)*H;
+  PX={sx,sy,T,H};
+  g.font='11px "JetBrains Mono", ui-monospace, monospace';g.fillStyle=css('--muted');g.strokeStyle=css('--grid');g.lineWidth=1;
+  g.textAlign='right';g.textBaseline='middle';
+  for(let v=ymin;v<=ymax;v+=500){const y=sy(v);g.beginPath();g.moveTo(L,y);g.lineTo(L+W,y);g.stroke();g.fillText(v,L-6,y);}
+  g.textAlign='center';g.textBaseline='top';
+  const nm=sTot/1852;for(let k=0;k<=nm;k++){const x=sx(k*1852);g.beginPath();g.moveTo(x,T);g.lineTo(x,T+H);g.stroke();g.fillText(k,x,T+H+5);}
+  g.textAlign='right';g.fillText('NM',L+W,T+H+5);
+  const area=(arr,col)=>{g.beginPath();g.moveTo(sx(samples[0].s),sy(ymin));samples.forEach((p,k)=>g.lineTo(sx(p.s),sy(Math.max(ymin,ft(arr[k])))));g.lineTo(sx(sTot),sy(ymin));g.closePath();g.fillStyle=col;g.fill();};
+  area(side,css('--terrain-soft'));area(samples.map(p=>p.g),css('--terrain'));
+  g.setLineDash([5,4]);g.strokeStyle=css('--muted');g.beginPath();g.moveTo(L,sy(CIRC.alt));g.lineTo(L+W,sy(CIRC.alt));g.stroke();g.setLineDash([]);
+  g.fillStyle=css('--muted');g.textAlign='left';g.textBaseline='bottom';g.fillText(CIRC.alt+' ft',L+4,sy(CIRC.alt)-2);
+  g.strokeStyle='#ffffff';g.lineWidth=6;g.lineJoin='round';g.beginPath();samples.forEach((p,k)=>{const x=sx(p.s),y=sy(fly[k]);k?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();
+  g.strokeStyle=css('--route');g.lineWidth=3;g.stroke();
+  g.font='500 11px "JetBrains Mono", ui-monospace, monospace';
+  if(SET.turns)for(const T2 of TURNS){const x=sx(T2.s),y=sy(T2.ft);g.fillStyle='#ffffff';g.beginPath();g.arc(x,y,5.5,0,7);g.fill();g.strokeStyle=css('--route');g.lineWidth=2.5;g.stroke();
+    const txt=T2.ft+' ft',tw=g.measureText(txt).width+8;const lx=Math.min(x+9,L+W-tw),ly=y-6;
+    g.fillStyle=css('--panel');g.fillRect(lx,ly,tw,15);g.fillStyle=css('--fg');g.textAlign='left';g.textBaseline='middle';g.fillText(txt,lx+4,ly+8);}
+  g.font='600 12px "Barlow Condensed", Arial Narrow, sans-serif';g.fillStyle=css('--fg');g.textAlign='center';g.textBaseline='top';
+  let st=0;for(let k=1;k<=samples.length;k++){const a=TR().short[samples[st].leg],b=k<samples.length?TR().short[samples[k].leg]:null;
+    if(b!==a){const x0=sx(samples[st].s),x1=sx(samples[k-1].s);if(a&&x1-x0>g.measureText(a.toUpperCase()).width+8)g.fillText(a.toUpperCase(),(x0+x1)/2,3);
+      if(k<samples.length){g.strokeStyle=css('--line');g.lineWidth=1;g.beginPath();g.moveTo(x1,T);g.lineTo(x1,T+H);g.stroke();}st=k;}}
+  if(TOD){const x=sx(TOD.s),y=sy(CIRC.alt),r=6;g.fillStyle=css('--route');g.strokeStyle='#ffffff';g.lineWidth=2;g.beginPath();g.moveTo(x,y-r*1.4);g.lineTo(x+r,y);g.lineTo(x,y+r*1.4);g.lineTo(x-r,y);g.closePath();g.fill();g.stroke();
+    g.font='600 12px "Barlow Condensed", Arial Narrow, sans-serif';g.fillStyle=css('--fg');g.textAlign='center';g.textBaseline='bottom';g.fillText(SET.gs+'°',x,y-r*1.4-3);}
+  let clr=Infinity,cleg='';samples.forEach((p,k)=>{if(['Querabflug','Gegenanflug','Queranflug'].includes(p.leg)){const c=fly[k]-ft(p.g);if(c<clr){clr=c;cleg=TR().short[p.leg];}}});
+  $('hmax').textContent=Math.round(hiSide/10)*10+' ft';
+  $('hclr').textContent=isFinite(clr)?Math.round(clr/10)*10+' ft ('+cleg+')':'–';
+}
+function paintCursor(){
+  if(!PX||!samples)return;const g=pc.getContext('2d'),dpr=pc.width/(pc.clientWidth||1);g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,pc.clientWidth,pc.clientHeight);
+  const n=samples.length-1,i=Math.min(Math.round(t*n),n),p=samples[i],x=PX.sx(p.s),y=PX.sy(ELEVFT+p.a*3.281);
+  g.strokeStyle=css('--fg');g.globalAlpha=.35;g.lineWidth=1;g.beginPath();g.moveTo(x,PX.T);g.lineTo(x,PX.T+PX.H);g.stroke();g.globalAlpha=1;
+  g.fillStyle='#ffffff';g.beginPath();g.arc(x,y,6,0,7);g.fill();g.fillStyle=css('--route');g.beginPath();g.arc(x,y,4,0,7);g.fill();}
+new ResizeObserver(()=>drawProfile()).observe(pf);
+const profEl=$('prof');profEl.addEventListener('toggle',()=>{if(profEl.open)drawProfile();});
+if(matchMedia('(min-width:900px)').matches)profEl.open=true;
+
+/* ---------- aircraft ---------- */
+const plane=new THREE.Group();let PSC=1.6;
+const pMatBody=new THREE.MeshLambertMaterial({color:0xffffff}),pMatAcc=new THREE.MeshLambertMaterial({color:0x1f5fa8}),pMatDark=new THREE.MeshLambertMaterial({color:0x2a2f35});
+function buildPlane(){
+  plane.clear();
+  pMatAcc.color.set(SET.pcolor);
+  const high=SET.ptype==='high';
+  const glass=new THREE.MeshLambertMaterial({color:0x1d2a36});
+  // local frame: +Z = nose, +Y = up, X = span. Dimensions roughly 1 unit = 6.5 cm (DA20 / C172 proportions)
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(15,7,118,14),pMatBody);body.rotation.x=Math.PI/2;body.position.z=-6;plane.add(body);
+  const nose=new THREE.Mesh(new THREE.SphereGeometry(15,14,10,0,Math.PI*2,0,Math.PI/2),pMatBody);nose.rotation.x=Math.PI/2;nose.scale.set(1,1.5,1);nose.position.z=53;plane.add(nose);
+  const spin=new THREE.Mesh(new THREE.ConeGeometry(5,12,10),pMatDark);spin.rotation.x=Math.PI/2;spin.position.z=81;plane.add(spin);
+  const prop=new THREE.Mesh(new THREE.CircleGeometry(27,24),new THREE.MeshBasicMaterial({color:0x2a2f35,transparent:true,opacity:0.3,side:THREE.DoubleSide}));prop.position.z=78;plane.add(prop);
+  if(high){
+    const win=new THREE.Mesh(new THREE.BoxGeometry(31,9,34),glass);win.position.set(0,7,22);plane.add(win);
+    const ws=new THREE.Mesh(new THREE.BoxGeometry(26,10,3),glass);ws.position.set(0,11,40);ws.rotation.x=-0.6;plane.add(ws);
+  }else{
+    const can=new THREE.Mesh(new THREE.SphereGeometry(12,16,10,0,Math.PI*2,0,Math.PI/2),glass);can.scale.set(1,0.9,2.4);can.position.set(0,12,14);plane.add(can);
+  }
+  // wings with dihedral (low-wing 5°, high-wing 1.5°)
+  const dih=(high?1.5:5)*Math.PI/180,half=118,wy=high?18:-10;
+  for(const sx of [-1,1]){
+    const w=new THREE.Mesh(new THREE.BoxGeometry(half,4,38),pMatAcc);w.rotation.z=sx*dih;
+    w.position.set(sx*(half/2+6)*Math.cos(dih),wy+(half/2+6)*Math.sin(dih),20);plane.add(w);
+    if(high){ // struts from lower fuselage to wing underside
+      const A=new THREE.Vector3(sx*13,-6,22),Bx=sx*62,By=wy-2+62*Math.tan(dih),B=new THREE.Vector3(Bx,By,22);
+      const dv=B.clone().sub(A),st=new THREE.Mesh(new THREE.CylinderGeometry(1.6,1.6,dv.length(),6),pMatDark);
+      st.position.copy(A).add(B).multiplyScalar(0.5);st.rotation.z=Math.atan2(-dv.x,dv.y);plane.add(st);}
+  }
+  const hs=new THREE.Mesh(new THREE.BoxGeometry(84,3,20),pMatAcc);hs.position.set(0,high?3:4,-56);plane.add(hs);
+  const fin=new THREE.Mesh(new THREE.BoxGeometry(3,30,24),pMatAcc);fin.position.set(0,20,-58);fin.rotation.x=-0.25;plane.add(fin);
+  // tricycle gear: mains under wing/fuselage, nose wheel forward
+  const mainX=high?24:30,mainY=-26;
+  for(const sx of [-1,1]){const w=new THREE.Mesh(new THREE.CylinderGeometry(6,6,4,12),pMatDark);w.rotation.z=Math.PI/2;w.position.set(sx*mainX,mainY,14);plane.add(w);
+    const leg=new THREE.Mesh(new THREE.BoxGeometry(2,14,4),pMatDark);leg.position.set(sx*(mainX-4),mainY+8,14);leg.rotation.z=sx*0.5;plane.add(leg);}
+  const nw=new THREE.Mesh(new THREE.CylinderGeometry(5,5,3,12),pMatDark);nw.rotation.z=Math.PI/2;nw.position.set(0,-24,56);plane.add(nw);
+  const nl=new THREE.Mesh(new THREE.BoxGeometry(2,12,2),pMatDark);nl.position.set(0,-16,56);plane.add(nl);
+}
+buildPlane();plane.scale.setScalar(PSC);const S2=new THREE.Scene();S2.add(plane,new THREE.HemisphereLight(0xffffff,0x8899aa,1.0));{const d2=new THREE.DirectionalLight(0xffffff,0.5);d2.position.set(-4000,8000,3000);S2.add(d2);}R.autoClear=false;
+const LIFT=new THREE.Vector3();let lastChase=false,BANK=0;
+
+/* ---------- UI ---------- */
+function home(){const cb=circuitBBox();const cx=(cb[0]+cb[2])/2,cn=(cb[1]+cb[3])/2,r=Math.max(2500,Math.hypot(cb[2]-cb[0],cb[3]-cb[1])/2)*(C.aspect<1?Math.min(2,0.85/C.aspect):1);
+  O.target.copy(V(cx,cn,0));if(TOP)C.position.copy(V(cx,cn-1,r*2.4));else C.position.copy(V(cx+r*0.55,cn-r*1.6,r*1.45));C.lookAt(O.target);O.update();}
+const TOP=/[?&]top\b/.test(location.search);
+function selectCircuit(id){CIRC=A.circuits.find(c=>c.id===id)||A.circuits[0];t=0;buildCircuit();}
+/* ---------- terrain data: embedded or live from swisstopo ---------- */
+const demCache={};let demToken=0;
+function flatDem(a){const z=a.elev/3.281,f=a.frame;return {e0:f[0],e1:f[2],n0:f[1],dn:f[3]-f[1],rows:[[z,z],[z,z]],flat:true};}
+async function fetchDem(a,onProgress){
+  const f=a.frame,W=f[2]-f[0],H=f[3]-f[1],NC=Math.min(200,Math.max(60,Math.round(W/150))),NR=Math.min(120,Math.max(20,Math.round(H/200))+1);
+  const dn=H/(NR-1),rows=new Array(NR);let done=0,fail=0;
+  const one=async i=>{const N=Math.round(f[1]+i*dn);
+    const geom=JSON.stringify({type:'LineString',coordinates:[[f[0],N],[f[2],N]]});
+    const url='https://api3.geo.admin.ch/rest/services/profile.json?geom='+encodeURIComponent(geom)+'&sr=2056&nb_points='+NC+'&distinct_points=true';
+    for(let tr=0;tr<3;tr++){try{const r=await fetch(url);if(!r.ok)throw 0;const j=await r.json();
+        const v=j.map(p=>{const al=p.alts||{};return +(al.COMB??al.DTM2??al.DTM25??NaN);});
+        if(v.length<10||v.some(x=>!isFinite(x)))throw 0;
+        const out=new Array(NC);for(let c=0;c<NC;c++){const t=c/(NC-1)*(v.length-1),k=Math.min(v.length-2,Math.floor(t)),w=t-k;out[c]=v[k]*(1-w)+v[k+1]*w;}
+        rows[i]=out;done++;onProgress&&onProgress(done,NR);return;}catch(e){await new Promise(r=>setTimeout(r,300*(tr+1)));}}
+    fail++;};
+  const q=[...Array(NR).keys()];const workers=Array.from({length:6},async()=>{while(q.length){if(fail>=6&&done===0){q.length=0;break;}await one(q.shift());}});
+  await Promise.all(workers);
+  if(fail>NR*0.2)throw new Error('dem');
+  for(let i=0;i<NR;i++)if(!rows[i]){let a2=i-1,b2=i+1;while(a2>=0&&!rows[a2])a2--;while(b2<NR&&!rows[b2])b2++;rows[i]=(rows[a2]||rows[b2]).slice();}
+  return {e0:f[0],e1:f[2],n0:f[1],dn,rows};
+}
+const demChip=$('demchip');
+function setDem(d){DEM=d;DE=(DEM.e1-DEM.e0)/(DEM.rows[0].length-1);}
+function airportTexts(){
+  $('apMeta').textContent=A.icao+' · '+A.elev+' ft · '+A.freq;
+  $('srcNote').textContent=(LANG==='de'?'':TR().note_lang)+A.note+'.';
+  $('flist').innerHTML='';for(const [l,v] of A.freqs){const li=document.createElement('li');const sp=document.createElement('span');sp.textContent=l;sp.title=l;const b=document.createElement('b');b.textContent=v;li.append(sp,b);$('flist').appendChild(li);}
+  $('apWeb').href=A.web;$('apWeb').title=A.web;
+  {const v=A.verified,el=$('verif');el.classList.toggle('ok',!!v);el.textContent=v?TR().ver_yes(v.date)+(v.by?' ('+v.by+')':''):TR().ver_no;}
+  $('gsNote').textContent=TR().approach+' '+SET.gs+'°.';
+}
+function applyLang(){
+  document.documentElement.lang=LANG==='rm'?'rm':LANG;
+  for(const e of document.querySelectorAll('[data-i18n]')){const v=TR()[e.dataset.i18n];if(typeof v==='string'&&v)e.textContent=v;}
+  $('discX').setAttribute('aria-label',TR().disc_close||'Close');
+  $('apSearch').placeholder=TR().search;$('play').textContent=playing?TR().pause:TR().play;
+  for(const b of document.querySelectorAll('.langs button'))b.setAttribute('aria-pressed',b.dataset.lang===LANG);
+  if(A){airportTexts();for(const b of $('circs').children){const c=A.circuits.find(x=>x.id===b.dataset.id);if(c)b.textContent=cLabel(c);}buildCircuit();}
+  if(!chip.hidden&&layerKey)loadLayer(layerKey);
+}
+function selectAirport(k){
+  AK=k;A=AIRPORTS[k];const tok=++demToken;demChip.classList.remove('warn');
+  if(A.dem){setDem(A.dem);demChip.hidden=true;}
+  else if(demCache[k]){setDem(demCache[k]);demChip.hidden=true;}
+  else{setDem(flatDem(A));demChip.hidden=false;demChip.textContent=TR().demLoad;
+    fetchDem(A,(d,n)=>{if(tok===demToken)demChip.textContent=`${TR().demLoad} ${Math.round(d/n*100)} %`;})
+      .then(d=>{demCache[k]=d;if(tok!==demToken)return;setDem(d);demChip.hidden=true;applyAirport(true);})
+      .catch(()=>{if(tok!==demToken)return;demChip.textContent=TR().demFail;demChip.classList.add('warn');});}
+  applyAirport(false);
+}
+function applyAirport(reshape){
+  const k=AK;
+  E0=A.rwy.c[0];N0=A.rwy.c[1];ELEVFT=A.elev;ZREF=elevAbs(E0,N0);
+  if(reshape){reliefCanvas=makeRelief(BASE);if(!BASE.hasImg){BASE.ctx.drawImage(reliefCanvas,0,0,BASE.cv.width,BASE.cv.height);BASE.tex.needsUpdate=true;}shapeAll();drawRunway();drawAirportOverlays();buildCircuit();if(layerKey==='rel')loadLayer('rel');return;}
+  rwyFrame();
+  {const cb=circuitBBox(),r=Math.hypot(cb[2]-cb[0],cb[3]-cb[1])/2;LBL=Math.max(0.45,Math.min(1,r/3800));PSC=1.6*Math.max(0.6,LBL);plane.scale.setScalar(PSC);}
+  for(const b of $('plist').children)b.setAttribute('aria-pressed',b.dataset.k===k);$('apSelect').value=k;
+  {const b=[...$('plist').children].find(x=>x.dataset.k===k);if(b&&b.scrollIntoView)b.scrollIntoView({block:'nearest'});}
+  $('apName').textContent=A.name;airportTexts();
+  const cs=$('circs');cs.innerHTML='';cs.classList.toggle('grid',A.circuits.length>2);
+  for(const c of A.circuits){const b=document.createElement('button');b.textContent=cLabel(c);b.dataset.id=c.id;b.onclick=()=>selectCircuit(c.id);cs.appendChild(b);}
+  buildTerrain();drawRunway();drawAirportOverlays();CIRC=A.circuits[0];t=0;buildCircuit();home();loadLayer(layerKey);
+  try{history.replaceState(null,'','#'+k);}catch(e){}
+}
+for(const k of ORDER){const a=AIRPORTS[k],b=document.createElement('button');b.dataset.k=k;b.dataset.q=(a.icao+' '+a.name).toLowerCase();
+  b.innerHTML=`<b>${a.icao}</b><span>${a.name}</span><small>${a.elev} ft</small>`;b.onclick=()=>{if(AK!==k)selectAirport(k);};$('plist').appendChild(b);
+  const o=document.createElement('option');o.value=k;o.textContent=a.icao+' · '+a.name;$('apSelect').appendChild(o);}
+$('apSelect').onchange=e=>{if(AK!==e.target.value)selectAirport(e.target.value);};
+$('apSearch').oninput=e=>{const q=e.target.value.trim().toLowerCase();for(const b of $('plist').children)b.hidden=!!q&&!b.dataset.q.includes(q);};
+$('apSearch').onkeydown=e=>{if(e.key==='Enter'){const b=[...$('plist').children].find(x=>!x.hidden);if(b)b.click();}};
+let SPEED=1;$('spd').oninput=e=>{SPEED=+e.target.value;$('spdo').textContent=SPEED+'×';};
+$('ex').oninput=e=>{EX=+e.target.value;$('exo').textContent=EX+'×';shapeAll();drawRunway();drawAirportOverlays();buildCircuit();};
+$('lyImg').onclick=()=>loadLayer('img');$('lyMap').onclick=()=>loadLayer('map');$('lyRel').onclick=()=>loadLayer('rel');
+$('play').onclick=()=>{playing=!playing;$('play').textContent=playing?TR().pause:TR().play;$('play').setAttribute('aria-pressed',!playing);};
+// while flying along the camera follows; own zoom / turn → free look from afar, "reset view" follows again
+$('chase').onclick=()=>{chase=!chase;chaseFree=false;$('chase').setAttribute('aria-pressed',chase);if(!chase)home();};
+O.addEventListener('start',()=>{if(chase&&!chaseFree){chaseFree=true;O.target.copy(look);}});
+$('homeBtn').onclick=()=>{if(chase){chaseFree=false;return;}home();};
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(reduce){playing=false;t=0.45;}
+
+const fmt=n=>Math.round(n/10)*10;const camPos=new THREE.Vector3(),look=new THREE.Vector3();
+function frame(now){
+  requestAnimationFrame(frame);
+  if(!samples)return;
+  flushTex(now||0);
+  if(TOD&&!REDUCED){const k=Math.sin((now||0)/650)*22*LBL;TOD.mesh.position.y=TOD.y0+k;TOD.mesh.rotation.y=(now||0)/1100;TOD.tag.position.y=TOD.ty+k;}
+  if(playing)t=(t+(chase?0.00035:0.0006)*SPEED*(6000/Math.max(3000,sTot)))%1;
+  const n=samples.length-1,i=Math.min(Math.round(t*n),n);
+  const p=curve.getPoint(t),q=curve.getPoint(Math.min(t+0.004,1));
+  LIFT.set(0,30*SET.width+15+32*PSC,0);plane.position.copy(p).add(LIFT);
+  if(t<0.995){plane.lookAt(q.clone().add(LIFT));
+    const q2=curve.getPoint(Math.min(t+0.012,1)),v1x=q.x-p.x,v1z=q.z-p.z,v2x=q2.x-q.x,v2z=q2.z-q.z;
+    const turn=Math.atan2(v1z*v2x-v1x*v2z,v1x*v2x+v1z*v2z);
+    const target=Math.max(-0.45,Math.min(0.45,-turn*6));BANK+=(target-BANK)*0.08;plane.rotateZ(BANK);plane.rotateX(-0.12*flareAmt(samples[i].s));}
+  const sm=samples[i],amsl=ELEVFT+sm.a*3.281,gnd=Math.max(0,amsl-sm.g*3.281);
+  $('amsl').textContent=fmt(amsl)+' ft';$('agl').textContent=sm.a>0?fmt(gnd)+' ft':'0 ft';
+  $('leg').textContent=TR().legs[sm.leg==='Startlauf'&&sm.a>0?'Steigflug':sm.leg]||'';
+  const rem=sTDP-sm.s;$('tdp').textContent=rem>0?(rem/1852).toFixed(1)+' NM':'–';
+  paintCursor();
+  if(chase!==lastChase||chase){lastChase=chase;const cp=C.position;for(const g of [grp,apGrp,rwyGrp])for(const o of g.children)if(o.isSprite)o.visible=!chase||o.position.distanceTo(cp)>1400;}
+  if(chase&&!chaseFree){const dir=q.clone().sub(p).setY(0).normalize();
+    camPos.copy(p).addScaledVector(dir,-650).add(new THREE.Vector3(0,240,0));C.position.lerp(camPos,0.08);look.copy(p).addScaledVector(dir,600);C.lookAt(look);}
+  else O.update();
+  R.clear();R.render(S,C);R.clearDepth();R.render(S2,C);}
+function size(){const w=box.clientWidth,h=box.clientHeight;C.aspect=w/h;C.updateProjectionMatrix();R.setSize(w,h);}
+new ResizeObserver(size).observe(box);size();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',buildCircuit);
+new MutationObserver(buildCircuit).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+/* ---------- language, menu, pages, settings ---------- */
+for(const b of document.querySelectorAll('.langs button'))b.onclick=()=>{LANG=b.dataset.lang;try{localStorage.setItem('vfr3d.lang',LANG);}catch(e){}applyLang();};
+const menuBtn=$('menuBtn'),menuList=$('menuList');
+function closeMenu(){menuList.hidden=true;menuBtn.setAttribute('aria-expanded','false');}
+menuBtn.onclick=e=>{e.stopPropagation();const open=menuList.hidden;menuList.hidden=!open;menuBtn.setAttribute('aria-expanded',String(open));if(open)menuList.querySelector('button').focus();};
+document.addEventListener('click',e=>{if(!menuList.hidden&&!menuList.contains(e.target))closeMenu();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMenu();if(document.body.classList.contains('subpage'))go('main');}});
+function go(p){closeMenu();
+  $('pgSettings').hidden=p!=='settings';$('pgImpressum').hidden=p!=='impressum';
+  document.body.classList.toggle('subpage',p!=='main');window.scrollTo(0,0);
+  if(p==='settings')syncSettings();if(p==='main'){size();drawProfile();}}
+for(const b of document.querySelectorAll('[data-go]'))b.addEventListener('click',()=>go(b.dataset.go));
+const SWATCH=['#1673BD','#e5007e','#ff3b30','#ff8a00','#ffd400','#00c853','#00b8d4','#2962ff','#aa00ff','#ffffff','#14181c'];
+function syncSettings(){
+  const sw=$('swatches');if(!sw.children.length){
+    for(const c of SWATCH){const b=document.createElement('button');b.setAttribute('role','radio');b.dataset.c=c;b.style.background=c;b.setAttribute('aria-label',c);b.onclick=()=>setOpt({color:c});sw.appendChild(b);}
+    const ci=document.createElement('input');ci.type='color';ci.id='setColor';ci.setAttribute('aria-label','Custom');ci.oninput=e=>setOpt({color:e.target.value});sw.appendChild(ci);}
+  for(const b of sw.querySelectorAll('button'))b.setAttribute('aria-checked',String(b.dataset.c.toLowerCase()===SET.color.toLowerCase()));
+  $('setColor').value=SET.color;
+  $('setWidth').value=SET.width;$('setWidthO').textContent=Math.round(SET.width*100)+' %';
+  $('wprev').firstElementChild.style.height=Math.max(2,Math.round(6*SET.width))+'px';
+  for(const b of $('setGs').children)b.setAttribute('aria-pressed',String(+b.dataset.gs===SET.gs));
+  $('setTurns').checked=SET.turns;
+  const ps=$('pswatches');if(!ps.children.length){
+    for(const c of PSWATCH){const b=document.createElement('button');b.setAttribute('role','radio');b.dataset.c=c;b.style.background=c;b.setAttribute('aria-label',c);b.onclick=()=>setOpt({pcolor:c});ps.appendChild(b);}
+    const ci=document.createElement('input');ci.type='color';ci.id='setPcolor';ci.setAttribute('aria-label','Custom');ci.oninput=e=>setOpt({pcolor:e.target.value});ps.appendChild(ci);}
+  for(const b of ps.querySelectorAll('button'))b.setAttribute('aria-checked',String(b.dataset.c.toLowerCase()===SET.pcolor.toLowerCase()));
+  $('setPcolor').value=SET.pcolor;
+  for(const b of $('setPtype').children)b.setAttribute('aria-pressed',String(b.dataset.pt===SET.ptype));}
+const PSWATCH=['#1f5fa8','#d32f2f','#f9a825','#2e7d32','#ff6d00','#6a1b9a','#ffffff','#14181c'];
+function setOpt(o){Object.assign(SET,o);saveSet();
+  document.documentElement.style.setProperty('--route',SET.color);GSTAN=Math.tan(SET.gs*Math.PI/180);
+  syncSettings();buildPlane();if(A){airportTexts();buildCircuit();}}
+$('setWidth').oninput=e=>setOpt({width:+e.target.value});
+for(const b of $('setGs').children)b.onclick=()=>setOpt({gs:+b.dataset.gs});
+$('setTurns').onchange=e=>setOpt({turns:e.target.checked});
+for(const b of $('setPtype').children)b.onclick=()=>setOpt({ptype:b.dataset.pt});
+$('setReset').onclick=()=>setOpt(Object.assign({},DEFSET));
+const start=(location.hash||'').slice(1).toUpperCase();
+selectAirport(AIRPORTS[start]?start:'LSZB');
+applyLang();
+{const bar=document.querySelector('.discbar'),SK='vfr3d.discbar.closed';
+  try{if(sessionStorage.getItem(SK)==='1')bar.classList.add('closed');}catch(e){}
+  $('discX').onclick=()=>{bar.classList.add('closed');try{sessionStorage.setItem(SK,'1');}catch(e){}window.dispatchEvent(new Event('resize'));};}
+{const KEY='vfr3d.disclaimer.v1',m=$('discModal');let seen=false;try{seen=localStorage.getItem(KEY)==='1';}catch(e){}
+ if(!seen){m.hidden=false;$('discOk').focus();}
+ $('discOk').onclick=()=>{m.hidden=true;try{localStorage.setItem(KEY,'1');}catch(e){}};}
+frame();
+})();
+</script>
+</body>
+</html>
